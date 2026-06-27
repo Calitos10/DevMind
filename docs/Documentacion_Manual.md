@@ -34,6 +34,7 @@ Vamos a empezar a aplicar TDD para construir el proyecto:
 
 ## . FASE 1
 
+
 Objetivo:
 
 - Registro de usuario
@@ -47,6 +48,7 @@ Objetivo:
 Antes de implementar nada vamos ha hacer tests cn TDD , que falen e implementar el caso de uso.
 
 
+## . FASE 1.1 
 
 CASOS DE USO:
 
@@ -171,9 +173,56 @@ Nos falta para cerrar la Fase 1:
 
 
 
-
 El siguiente paso lógico es crear las implementaciones reales de infraestructura (los adapters):
 
-- BcryptPasswordHasher, JwtTokenService, CryptoIdGenerator
+- BcryptPasswordHasher → para hashear y comparar contraseñas
+- JwtTokenService → para generar y verificar tokens JWT
+- CryptoIdGenerator → para generar IDs reales
+
+
+## . FASE 1.2
+
+Usaremos:
+
+- bcryptjs → cifrar y comparar contraseñas
+- jsonwebtoken → crear y verificar JWT
+- crypto.randomUUID → generar IDs
+
+Instalaremos las dependencias:
+
+- npm install bcryptjs jsonwebtoken
+- npm install -D @types/jsonwebtoken
+
+Modificamos nuestor .env para añadir el secreto para jasonwebtoken y los dias de expricion
+Modificamos el env.ts de config de infra para que coja todo de .env
+
+Tenemos que actualizar el puerto tokenService, ahora mismo solo tiene sign,para firmar y generar el token pero hay que añair el metodo verificar porque más adelante el middleware de autenticación hará esto:
+
+- recibir token
+- verificar token
+- extraer userId
+- permitir acceso a rutas protegidas
+
+
+Al añadir verify, el test de login puede fallar porque FakeTokenService ya no implementa toda la interfaz.
+
+Ahora vamos a crear la carpeta authAdapters dentro de infrastructura y ahi metermos los ficheros de adapters que implementand a los ports de la carpeta de aplciacion : bcryptPasswordHasher, jwtTokenService, cryptoIdGenerator
+
+Una vez creadas las implementaciones reales de los puertos, empezamos con TDD generarndo los test unitarios de infraestructura.
+
+Despues de generar los test, podemos probarlos, pero ahy una cosa que nos falta, durante la creacion de las implementaciones y los tests hemos usado un nuevo tipo de error que es el de unauthorized.erro, lo creamos en la carpeta errors y ya podemos pasar los tests.
+
+
+---------------
+
+Hasta aqui lo que hemos hecho es crear e incializar el proyecto con el set up, dependencias y configuracion que necesitamos, hemos creado la estructura base de carpetas, creado el dominio con su entidad e interfaz de repositorio, creado los puertos que necesitamos en applicacion y los casos de uso que los usan, hemos implementado los puertos de aplicacion con infraestructura real y para todo esto hemos seguido TDD y hemos creado tipos de errores nuestors ( hemos creado tambien un ,en y una confugracion en infraestructura para poder acceder a el). Tambien esta creado el fichero de app donde se crea la app de express, un ruter con un pequeño endpoint y el fichero main que levanta el servidor.
+
+----------------
+
+
+## . FASE 1.3
+
+
+
 
 
