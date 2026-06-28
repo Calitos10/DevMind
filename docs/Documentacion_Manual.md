@@ -222,6 +222,48 @@ Hasta aqui lo que hemos hecho es crear e incializar el proyecto con el set up, d
 
 ## . FASE 1.3
 
+Ahora toca conectar todo con HTTP, es decir, crear los endpoints reales:
+
+POST /auth/register
+POST /auth/login
+GET  /auth/me
+
+Pero antes necesitamos una pieza temporal.
+
+Como todavía no hemos metido PostgreSQL, necesitamos un repositorio en memoria dentro de infraestructura para poder probar los endpoints.Este repositorio será temporal.Luego, cuando metamos PostgreSQL, lo cambiaremos.
+
+Pero ahora nos permite terminar la autenticación HTTP sin esperar a la base de datos.
+
+
+
+
+Creamos un contenedor de dependencias simple.Para no estar instanciando todo en cada controller, creamos un archivo donde montamos los casos de uso.
+
+Esto es una forma sencilla de hacer inyección de dependencias manual.No estamos usando una librería rara. Simplemente estamos diciendo:
+
+- Aquí conecto mis interfaces con implementaciones reales.
+
+
+
+Ahora vamos a crear estos endpoints:
+
+POST /auth/register
+POST /auth/login
+GET  /auth/me
+
+Y para hacerlo bien vamos a añadir estas piezas:
+
+AuthController
+AuthRoutes
+AuthMiddleware
+ErrorMiddleware
+ValidateBodyMiddleware
+
+
+Instalamos zod como dependencia si no esta instalado aun, Lo usaremos para validar que el usuario mande bien los datos.
+
+
+
 
 
 
