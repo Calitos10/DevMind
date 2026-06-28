@@ -215,7 +215,7 @@ Despues de generar los test, podemos probarlos, pero ahy una cosa que nos falta,
 
 ---------------
 
-Hasta aqui lo que hemos hecho es crear e incializar el proyecto con el set up, dependencias y configuracion que necesitamos, hemos creado la estructura base de carpetas, creado el dominio con su entidad e interfaz de repositorio, creado los puertos que necesitamos en applicacion y los casos de uso que los usan, hemos implementado los puertos de aplicacion con infraestructura real y para todo esto hemos seguido TDD y hemos creado tipos de errores nuestors ( hemos creado tambien un ,en y una confugracion en infraestructura para poder acceder a el). Tambien esta creado el fichero de app donde se crea la app de express, un ruter con un pequeño endpoint y el fichero main que levanta el servidor.
+Hasta aqui lo que hemos hecho es crear e incializar el proyecto con el set up, dependencias y configuracion que necesitamos, hemos creado la estructura base de carpetas, creado el dominio con su entidad e interfaz de repositorio, creado los puertos que necesitamos en applicacion y los casos de uso que los usan, hemos implementado los puertos de aplicacion con infraestructura real y para todo esto hemos seguido TDD y hemos creado tipos de errores nuestros ( hemos creado tambien un .env y una confugracion en infraestructura para poder acceder a el). Tambien esta creado el fichero de app donde se crea la app de express, un ruter con un pequeño endpoint y el fichero main que levanta el servidor.
 
 ----------------
 
@@ -261,6 +261,51 @@ ValidateBodyMiddleware
 
 
 Instalamos zod como dependencia si no esta instalado aun, Lo usaremos para validar que el usuario mande bien los datos.
+
+Creamos schemas de autenticación; Este archivo define las reglas de entrada para registro y login.
+
+Ahora necesitamos una función que use esos schemas. Para ello creamos el middleware de validateBody
+
+Esto lo usaremos en el controller para validar los datos que recibimos del body.Por qué no validamos directamente en el controller: Podríamos hacerlo, pero ensuciaríamos el controller.
+
+
+
+Seguimos entonces con la siguiente pieza: manejo de errores async.
+
+Cuando un controller es async, puede fallar. Por ejemplo:
+
+- await this.loginUserUseCase.execute(...)
+
+Si el login falla, el caso de uso lanza:
+
+- throw new InvalidCredentialsError();
+
+Express necesita que ese error llegue a un middleware de errores. Para no poner try/catch en cada controller, usamos un helper llamado asyncHandler.
+
+Ahora vamos a crear errorMiddleware; Este middleware es el sitio central donde convertimos errores en respuestas HTTP.
+
+Ahora tenemso que Conectar errorMiddleware en app.ts. Importante: app.use(errorMiddleware) va después de las rutas.
+
+Porque primero Express intenta resolver la petición, y si alguna ruta lanza error, entonces pasa al middleware de errores.
+
+No estamos siguiendo TDD :
+
+- El proyecto aplica una estrategia de TDD pragmático. En las capas de dominio y aplicación, donde se concentra la lógica de negocio, se han escrito pruebas unitarias antes de la implementación. En la capa de transporte HTTP, al tratarse principalmente de código de integración y cableado entre rutas, middlewares y controladores, se han utilizado pruebas de integración para validar el comportamiento completo de los endpoints.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

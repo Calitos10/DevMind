@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { authRoutes } from "./authrutes/authRutes";
 
 export const router = Router();
 
@@ -9,3 +10,5 @@ router.get("/health", (_req, res) => {
     message: "API is running",
   });
 });
+
+router.use("/auth", authRoutes);
