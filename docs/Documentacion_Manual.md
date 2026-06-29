@@ -1,3 +1,57 @@
+OBJETIVO DEL PROYECTO: 
+- Construir una API backend profesional que permita a usuarios autenticados crear proyectos software, subir/indexar su código y hacer consultas inteligentes sobre ese proyecto usando IA.
+
+- DevMind ofrece dos modos de uso: un modo invitado, que permite probar la funcionalidad principal de análisis e interacción con proyectos software sin necesidad de registro, y un modo autenticado, que permite persistir proyectos, historial de conversaciones y resultados de indexación asociados a cada usuario.
+
+- El problema no es “hacer una app con IA”. El problema es:
+
+  >Entender un proyecto software existente puede ser lento porque el conocimiento está repartido entre carpetas, archivos, documentación incompleta y memoria del equipo.
+
+- DevMind quiere ayudar a:
+
+  >desarrolladores nuevos
+  >equipos con proyectos grandes 
+  >personas que entran a mantener código ajeno
+  >equipos que no tienen documentación actualizada
+
+-El enfoque es:
+
+  >Convertir un proyecto software en una fuente de conocimiento consultable mediante lenguaje natural.
+
+
+
+Ejemplo práctico:
+
+- Tú tendrías un proyecto guardado:
+
+  >Proyecto: DevMind API
+
+  >Podrías preguntarle:
+
+    *Explícame la arquitectura de este proyecto
+    *¿Qué endpoints existen?
+    *¿Dónde se validan los datos de entrada?
+    *Qué casos de uso tiene la autenticación?
+    *¿Qué tests hay para auth?
+    *¿Qué partes pertenecen a domain, application, infrastructure y transport?
+    *¿Qué debería mejorar de este código?
+
+  > Eso deja claro que DevMind no es solo un CRUD, sino una herramienta para entender proyectos software.
+
+FASES:
+
+Fase 0 — Setup inicial
+Fase 1 — Autenticación
+Fase 2 — Proyectos persistentes
+Fase 3 — Subida de archivos
+Fase 4 — Indexación
+Fase 5 — Chat RAG
+Fase 6 — Historial
+Fase 7 — Funciones inteligentes
+Fase 8 — Modo invitado / demo sin registro
+Fase 9 — Onboarding visual / presentación final
+
+
 ## . FASE 0
 
 Vamos a empezar a construir el proyecto:
@@ -45,7 +99,7 @@ Objetivo:
 - GET /auth/me
 - Tests con TDD
 
-Antes de implementar nada vamos ha hacer tests cn TDD , que falen e implementar el caso de uso.
+Antes de implementar nada vamos ha hacer tests conn TDD , que falen e implementar el caso de uso.
 
 
 ## . FASE 1.1 
@@ -103,7 +157,7 @@ Ahora terminado el primer Test lo que vamosa hacer es la construccion de manejad
 
   > compare(plainPassword: string, passwordHash: string): Promise<boolean>;
 
-- Esto rompera el test de reggistro porque el fake solo tiene un metodo, debemos incluirlo aunque el test no lo use. Asi typescript no se queja.
+- Esto rompera el test de registro porque el fake solo tiene un metodo, debemos incluirlo aunque el test no lo use. Asi typescript no se queja.
 
 - Creamos el puerto tokenService, Esto es un puerto de aplicación.No usamos todavía jsonwebtoken directamente porque eso será infraestructura.El caso de uso solo dice: Necesito algo que sepa generar tokens.
 
@@ -193,10 +247,10 @@ Instalaremos las dependencias:
 - npm install bcryptjs jsonwebtoken
 - npm install -D @types/jsonwebtoken
 
-Modificamos nuestor .env para añadir el secreto para jasonwebtoken y los dias de expricion
+Modificamos nuestor .env para añadir el secreto para jasonwebtoken y los dias de expiracion
 Modificamos el env.ts de config de infra para que coja todo de .env
 
-Tenemos que actualizar el puerto tokenService, ahora mismo solo tiene sign,para firmar y generar el token pero hay que añair el metodo verificar porque más adelante el middleware de autenticación hará esto:
+Tenemos que actualizar el puerto tokenService, ahora mismo solo tiene sign, para firmar y generar el token pero hay que añair el metodo verificar porque más adelante el middleware de autenticación hará esto:
 
 - recibir token
 - verificar token
@@ -206,11 +260,13 @@ Tenemos que actualizar el puerto tokenService, ahora mismo solo tiene sign,para 
 
 Al añadir verify, el test de login puede fallar porque FakeTokenService ya no implementa toda la interfaz.
 
-Ahora vamos a crear la carpeta authAdapters dentro de infrastructura y ahi metermos los ficheros de adapters que implementand a los ports de la carpeta de aplciacion : bcryptPasswordHasher, jwtTokenService, cryptoIdGenerator
+Ahora vamos a crear la carpeta authAdapters dentro de infrastructura y ahi metermos los ficheros adapters que implementan a los ports de la carpeta de aplciacion : bcryptPasswordHasher, jwtTokenService, cryptoIdGenerator
 
-Una vez creadas las implementaciones reales de los puertos, empezamos con TDD generarndo los test unitarios de infraestructura.
+Ahora, siguiendo el ciclo TDD, cramos los test unitarios de infraestructura, estos debene fallar porque aun no estan implementados los adapteres
 
-Despues de generar los test, podemos probarlos, pero ahy una cosa que nos falta, durante la creacion de las implementaciones y los tests hemos usado un nuevo tipo de error que es el de unauthorized.erro, lo creamos en la carpeta errors y ya podemos pasar los tests.
+Una vez creados los tests, creamos las implementaciones reales de los puertos.
+
+Hay una cosa que nos falta, durante la creacion de los tests y las implementaciones hemos usado un nuevo tipo de error que es el de unauthorized.erro, lo creamos en la carpeta errors y ya podemos pasar los tests.
 
 
 ---------------
@@ -230,16 +286,16 @@ GET  /auth/me
 
 Pero antes necesitamos una pieza temporal.
 
-Como todavía no hemos metido PostgreSQL, necesitamos un repositorio en memoria dentro de infraestructura para poder probar los endpoints.Este repositorio será temporal.Luego, cuando metamos PostgreSQL, lo cambiaremos.
+Como todavía no hemos metido PostgreSQL, necesitamos un repositorio en memoria dentro de infraestructura para poder probar los endpoints. Este repositorio será temporal. Luego, cuando metamos PostgreSQL, lo cambiaremos.
 
 Pero ahora nos permite terminar la autenticación HTTP sin esperar a la base de datos.
 
 
 
 
-Creamos un contenedor de dependencias simple.Para no estar instanciando todo en cada controller, creamos un archivo donde montamos los casos de uso.
+Creamos un contenedor de dependencias simple. Para no estar instanciando todo en cada controller, creamos un archivo donde montamos los casos de uso.
 
-Esto es una forma sencilla de hacer inyección de dependencias manual.No estamos usando una librería rara. Simplemente estamos diciendo:
+Esto es una forma sencilla de hacer inyección de dependencias manual. No estamos usando una librería rara. Simplemente estamos diciendo:
 
 - Aquí conecto mis interfaces con implementaciones reales.
 
@@ -266,7 +322,7 @@ Creamos schemas de autenticación; Este archivo define las reglas de entrada par
 
 Ahora necesitamos una función que use esos schemas. Para ello creamos el middleware de validateBody
 
-Esto lo usaremos en el controller para validar los datos que recibimos del body.Por qué no validamos directamente en el controller: Podríamos hacerlo, pero ensuciaríamos el controller.
+Esto lo usaremos en el controller para validar los datos que recibimos del body. Por qué no validamos directamente en el controller: Podríamos hacerlo, pero ensuciaríamos el controller.
 
 
 
@@ -288,9 +344,124 @@ Ahora tenemso que Conectar errorMiddleware en app.ts. Importante: app.use(errorM
 
 Porque primero Express intenta resolver la petición, y si alguna ruta lanza error, entonces pasa al middleware de errores.
 
+Creamos el authcontroller que sera el que reciba el contenedor y realice las acciones de registrar y demas usando los casos de usos sobre los datos que recibe del body
+
+Por ultimo crearemos el authrutes donde crearemos las rutas de nuestros endpoint, en cada endpoint se incluira lo que cada uno haga , menteidno los middleware de validacio y posteriormente el controller
+
 No estamos siguiendo TDD :
 
-- El proyecto aplica una estrategia de TDD pragmático. En las capas de dominio y aplicación, donde se concentra la lógica de negocio, se han escrito pruebas unitarias antes de la implementación. En la capa de transporte HTTP, al tratarse principalmente de código de integración y cableado entre rutas, middlewares y controladores, se han utilizado pruebas de integración para validar el comportamiento completo de los endpoints.
+- El proyecto aplica una estrategia de TDD pragmático. En las capas de dominio y aplicación, donde se concentra la lógica de negocio, se han escrito pruebas unitarias antes de la implementación. En la capa de transporte HTTP, al tratarse principalmente de código de integración y cableado entre rutas, middlewares y controladores, se han utilizado pruebas de integración para validar el comportamiento completo de los endpoints. Hemos creado tests depues de toda la implementacion de esta parte, para asegurarnos de que todo funciona como queremos, no hemos sguido TDD en esta parte.
+
+
+## . FASE 2
+
+Vamos a ir con TDD, así que no empezamos creando el endpoint. 
+
+
+1.[CreateProjectUseCase]
+
+Su responsabilidad será:
+
+- Crear un proyecto asociado a un usuario autenticado.
+
+Creamos primeor el test, este fallara porque aun no hay nada creado y los imports no iran
+
+Creamos en domain la entidda projects y el repositorio projectRepository
+
+Creamos en aplicacion el caso de uso de CreateProjectUseCase
+
+Ahora probamos los tests y pasan.
+
+
+
+
+2.[ListUserProjectsUseCase]
+
+Este caso de uso responderá a:
+
+- Dame todos los proyectos de este usuario.
+
+- Ejemplo:
+
+  >await listUserProjectsUseCase.execute({
+    ownerId: "user-1",
+   });
+
+  > Debería devolver solo los proyectos cuyo ownerId sea "user-1".
+
+Ya sabemos crear proyectos. El siguiente paso lógico es poder listarlos. El objetivo será comprobar esta regla:
+
+ - Un usuario solo puede listar sus propios proyectos.
+
+ - Es decir, si existen proyectos de user-1 y de user-2, cuando liste user-1 no deben aparecer los de user-2.
+
+Generamos el test ya que estamos siguiendo TDD, este fallara porqueimporta el caso de uso y todavia no esta creado.
+
+Creamos el caso de uso y corremos los tests, estos deben pasar
+
+
+
+
+
+
+
+3.[GetProjectByIdUseCase]
+
+Este caso de uso sirve para obtener un proyecto concreto.
+
+Responde a esta pregunta:
+
+ - Dame este proyecto concreto, pero solo si es mío.
+
+    >Ejemplo:
+
+        await getProjectByIdUseCase.execute({
+          projectId: "project-1",
+          ownerId: "user-1",
+        });
+
+Si se hace una peticion pidiendo un proyecto en concreto, podria darse la opcion de que un usuario pudiese recuperar el proyecto de otra persona , haciendolo asi, solo recupera proyectos que son suyos
+
+Generamos primeor el tes unitario, este falla porque le caso de uso aun no esta creado.
+
+Creamos el caso de uso, corremos los test y este pasa.
+
+Hemos creado un tipo de error:ProjectNotFoundError, si el proyecto en concreto no existe lanzara este tipo de error, esto sirve para que luego middleware pueda convertirlo en http
+
+
+
+
+
+
+
+
+4.[DeleteProjectUseCase]
+
+Este caso de uso servirá para:
+
+ - Borrar un proyecto concreto, pero solo si pertenece al usuario autenticado.
+
+Y como ya hemos decidido usar errores propios, si el proyecto no existe o no es del usuario, lanzará:
+
+ - ProjectNotFoundError
+
+Recibirá esto:
+
+    {
+      projectId: "project-1",
+      ownerId: "user-1"
+    }
+
+Y deberá hacer:
+
+  1. Buscar el proyecto por projectId y ownerId.
+  2. Si no existe, lanzar ProjectNotFoundError.
+  3. Si existe, borrarlo.
+
+
+Primeor creamos el test unitario, este no pasara orque aun no esta impelementado.
+
+Implementamos el caso de uso y pasamos los test.
 
 
 
