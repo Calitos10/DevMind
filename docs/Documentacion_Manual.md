@@ -1312,4 +1312,16 @@ Ahora vamos a crear un script pequeño para probar el repositorio y cuando funci
 
 Ahora como funciona modificamos el container
 
+
+
+Ya hemos terminado la fse 4 en la que hemos implementado la persistnecia en postgre, en esta parte no hemos usado tdd puro sino que hemos realizado scripts que eriiaban si las comexiomnes, creaciones y demas estaban bien.
+
+Durante la migración a PostgreSQL se realizaron scripts de verificación manual para validar rápidamente la conexión y el comportamiento de los nuevos repositorios. Posteriormente, estas verificaciones se consolidaron como tests de integración automatizados ejecutables mediante npm test.
+
+test-db-connection.ts--> postgresConnection.test.ts
+test-postgres-project-file-repository.ts --> postgresProjectFileRepository.test.ts
+test-postgres-project-repository.ts --> postgresProjectRepository.test.ts
+test-postgres-user-repository.ts --> postgresUserRepository.test.ts
+
+
   
