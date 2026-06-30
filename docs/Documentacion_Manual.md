@@ -1,40 +1,39 @@
-OBJETIVO DEL PROYECTO: 
+OBJETIVO DEL PROYECTO:
+
 - Construir una API backend profesional que permita a usuarios autenticados crear proyectos software, subir/indexar su código y hacer consultas inteligentes sobre ese proyecto usando IA.
 
 - DevMind ofrece dos modos de uso: un modo invitado, que permite probar la funcionalidad principal de análisis e interacción con proyectos software sin necesidad de registro, y un modo autenticado, que permite persistir proyectos, historial de conversaciones y resultados de indexación asociados a cada usuario.
 
 - El problema no es “hacer una app con IA”. El problema es:
 
-  >Entender un proyecto software existente puede ser lento porque el conocimiento está repartido entre carpetas, archivos, documentación incompleta y memoria del equipo.
+  > Entender un proyecto software existente puede ser lento porque el conocimiento está repartido entre carpetas, archivos, documentación incompleta y memoria del equipo.
 
 - DevMind quiere ayudar a:
 
-  >desarrolladores nuevos
-  >equipos con proyectos grandes 
-  >personas que entran a mantener código ajeno
-  >equipos que no tienen documentación actualizada
+  > desarrolladores nuevos
+  > equipos con proyectos grandes
+  > personas que entran a mantener código ajeno
+  > equipos que no tienen documentación actualizada
 
 -El enfoque es:
 
-  >Convertir un proyecto software en una fuente de conocimiento consultable mediante lenguaje natural.
-
-
+> Convertir un proyecto software en una fuente de conocimiento consultable mediante lenguaje natural.
 
 Ejemplo práctico:
 
 - Tú tendrías un proyecto guardado:
 
-  >Proyecto: DevMind API
+  > Proyecto: DevMind API
 
-  >Podrías preguntarle:
+  > Podrías preguntarle:
 
-    *Explícame la arquitectura de este proyecto
-    *¿Qué endpoints existen?
-    *¿Dónde se validan los datos de entrada?
-    *Qué casos de uso tiene la autenticación?
-    *¿Qué tests hay para auth?
-    *¿Qué partes pertenecen a domain, application, infrastructure y transport?
-    *¿Qué debería mejorar de este código?
+  _Explícame la arquitectura de este proyecto
+  _¿Qué endpoints existen?
+  *¿Dónde se validan los datos de entrada?
+  *Qué casos de uso tiene la autenticación?
+  _¿Qué tests hay para auth?
+  _¿Qué partes pertenecen a domain, application, infrastructure y transport?
+  \*¿Qué debería mejorar de este código?
 
   > Eso deja claro que DevMind no es solo un CRUD, sino una herramienta para entender proyectos software.
 
@@ -50,7 +49,6 @@ Fase 6 — Historial
 Fase 7 — Funciones inteligentes
 Fase 8 — Modo invitado / demo sin registro
 Fase 9 — Onboarding visual / presentación final
-
 
 ## . FASE 0
 
@@ -82,12 +80,7 @@ Vamos a empezar a aplicar TDD para construir el proyecto:
 [ ] README inicial creado
 [ ] Primer commit hecho
 
-
-
-
-
 ## . FASE 1
-
 
 Objetivo:
 
@@ -101,8 +94,7 @@ Objetivo:
 
 Antes de implementar nada vamos ha hacer tests conn TDD , que falen e implementar el caso de uso.
 
-
-## . FASE 1.1 
+## . FASE 1.1
 
 CASOS DE USO:
 
@@ -128,11 +120,6 @@ CASOS DE USO:
 [ ] Test de email duplicado creado
 [ ] npm test pasa
 
-
-
-
-
-
 #.[Errores]
 
 Ahora terminado el primer Test lo que vamosa hacer es la construccion de manejadores de errores propios y no generales:
@@ -144,14 +131,7 @@ Ahora terminado el primer Test lo que vamosa hacer es la construccion de manejad
   > Si el error es AppError → responde con su statusCode
   > Si es otro error desconocido → responde 500
 
-
-
-
-
-
-
-
-2.[LoginUserUseCase]
+  2.[LoginUserUseCase]
 
 - Tenemos que actualizr el puerto PasswordHasher, debemos incluirle un metodo e comparacion:
 
@@ -167,23 +147,19 @@ Ahora terminado el primer Test lo que vamosa hacer es la construccion de manejad
 
 -Ya tenemos el TDD , no pasa porque el caso de uso no esta creado, lo creamos y comprobamos que el test pase, ya hemos terminado este caso de uso
 
-
-
-
-
-
-
 3.[GetCurrentUserUseCase]
 
 - Cerramos la parte de registro y login a nivel de aplicación, y ahora vamos con lo que nos servirá más adelante para el endpoint GET /auth/me: obtener el usuario actual a partir de su userId.
 
 - La idea será:
-  >Si el token es válido → el middleware extrae el userId
-  >GET /auth/me → busca ese usuario por id
-  >Devuelve sus datos públicos
+
+  > Si el token es válido → el middleware extrae el userId
+  > GET /auth/me → busca ese usuario por id
+  > Devuelve sus datos públicos
 
 - Debemos actualiar la interfaz del repositorio de usuarios para que encuentre usuarios por el id :
-   > findById(id: string): Promise<User | null>;
+
+  > findById(id: string): Promise<User | null>;
 
 - Como hemos añadido findById, ahora tus repositorios en memoria de los tests van a fallar hasta que lo implementes.
 
@@ -191,11 +167,7 @@ Ahora terminado el primer Test lo que vamosa hacer es la construccion de manejad
 
 - Ahora empezamos con TDD y vamos a crear el test GetCurrentUserUseCase:
 
-
-
-
 Ya llevamos:
-
 
 [x] User entity
 [x] UserRepository
@@ -212,7 +184,6 @@ Ya llevamos:
 [x] Tests unitarios de login
 [x] Tests unitarios de usuario actual
 
-
 Nos falta para cerrar la Fase 1:
 
 [ ] Infraestructura real: bcrypt
@@ -225,14 +196,11 @@ Nos falta para cerrar la Fase 1:
 [ ] Error middleware
 [ ] Tests de integración HTTP
 
-
-
 El siguiente paso lógico es crear las implementaciones reales de infraestructura (los adapters):
 
 - BcryptPasswordHasher → para hashear y comparar contraseñas
 - JwtTokenService → para generar y verificar tokens JWT
 - CryptoIdGenerator → para generar IDs reales
-
 
 ## . FASE 1.2
 
@@ -257,7 +225,6 @@ Tenemos que actualizar el puerto tokenService, ahora mismo solo tiene sign, para
 - extraer userId
 - permitir acceso a rutas protegidas
 
-
 Al añadir verify, el test de login puede fallar porque FakeTokenService ya no implementa toda la interfaz.
 
 Ahora vamos a crear la carpeta authAdapters dentro de infrastructura y ahi metermos los ficheros adapters que implementan a los ports de la carpeta de aplciacion : bcryptPasswordHasher, jwtTokenService, cryptoIdGenerator
@@ -268,13 +235,11 @@ Una vez creados los tests, creamos las implementaciones reales de los puertos.
 
 Hay una cosa que nos falta, durante la creacion de los tests y las implementaciones hemos usado un nuevo tipo de error que es el de unauthorized.erro, lo creamos en la carpeta errors y ya podemos pasar los tests.
 
-
----------------
+---
 
 Hasta aqui lo que hemos hecho es crear e incializar el proyecto con el set up, dependencias y configuracion que necesitamos, hemos creado la estructura base de carpetas, creado el dominio con su entidad e interfaz de repositorio, creado los puertos que necesitamos en applicacion y los casos de uso que los usan, hemos implementado los puertos de aplicacion con infraestructura real y para todo esto hemos seguido TDD y hemos creado tipos de errores nuestros ( hemos creado tambien un .env y una confugracion en infraestructura para poder acceder a el). Tambien esta creado el fichero de app donde se crea la app de express, un ruter con un pequeño endpoint y el fichero main que levanta el servidor.
 
-----------------
-
+---
 
 ## . FASE 1.3
 
@@ -282,7 +247,7 @@ Ahora toca conectar todo con HTTP, es decir, crear los endpoints reales:
 
 POST /auth/register
 POST /auth/login
-GET  /auth/me
+GET /auth/me
 
 Pero antes necesitamos una pieza temporal.
 
@@ -290,22 +255,17 @@ Como todavía no hemos metido PostgreSQL, necesitamos un repositorio en memoria 
 
 Pero ahora nos permite terminar la autenticación HTTP sin esperar a la base de datos.
 
-
-
-
 Creamos un contenedor de dependencias simple. Para no estar instanciando todo en cada controller, creamos un archivo donde montamos los casos de uso.
 
 Esto es una forma sencilla de hacer inyección de dependencias manual. No estamos usando una librería rara. Simplemente estamos diciendo:
 
 - Aquí conecto mis interfaces con implementaciones reales.
 
-
-
 Ahora vamos a crear estos endpoints:
 
 POST /auth/register
 POST /auth/login
-GET  /auth/me
+GET /auth/me
 
 Y para hacerlo bien vamos a añadir estas piezas:
 
@@ -315,7 +275,6 @@ AuthMiddleware
 ErrorMiddleware
 ValidateBodyMiddleware
 
-
 Instalamos zod como dependencia si no esta instalado aun, Lo usaremos para validar que el usuario mande bien los datos.
 
 Creamos schemas de autenticación; Este archivo define las reglas de entrada para registro y login.
@@ -323,8 +282,6 @@ Creamos schemas de autenticación; Este archivo define las reglas de entrada par
 Ahora necesitamos una función que use esos schemas. Para ello creamos el middleware de validateBody
 
 Esto lo usaremos en el controller para validar los datos que recibimos del body. Por qué no validamos directamente en el controller: Podríamos hacerlo, pero ensuciaríamos el controller.
-
-
 
 Seguimos entonces con la siguiente pieza: manejo de errores async.
 
@@ -348,15 +305,55 @@ Creamos el authcontroller que sera el que reciba el contenedor y realice las acc
 
 Por ultimo crearemos el authrutes donde crearemos las rutas de nuestros endpoint, en cada endpoint se incluira lo que cada uno haga , menteidno los middleware de validacio y posteriormente el controller
 
-No estamos siguiendo TDD :
+Estamos siguiendo TDD :
 
-- El proyecto aplica una estrategia de TDD pragmático. En las capas de dominio y aplicación, donde se concentra la lógica de negocio, se han escrito pruebas unitarias antes de la implementación. En la capa de transporte HTTP, al tratarse principalmente de código de integración y cableado entre rutas, middlewares y controladores, se han utilizado pruebas de integración para validar el comportamiento completo de los endpoints. Hemos creado tests depues de toda la implementacion de esta parte, para asegurarnos de que todo funciona como queremos, no hemos sguido TDD en esta parte.
-
+- El proyecto aplica una estrategia de TDD . En las capas de dominio y aplicación, donde se concentra la lógica de negocio, se han escrito pruebas unitarias antes de la implementación. En la capa de transporte HTTP, al tratarse principalmente de código de integración y cableado entre rutas, middlewares y controladores, se han utilizado pruebas de integración para validar el comportamiento completo de los endpoints. Hemos creado tests primero, luego una implementacion basica de rutas, middlewares y controladores para que los tests pasen y despues hemos añadid mas tests y hemos vuelto a implementar ( por ejemplo casos de eeror )
 
 ## . FASE 2
 
-Vamos a ir con TDD, así que no empezamos creando el endpoint. 
+CHECKLIST:
 
+[ ] POST /projects sin token → 401
+[ ] POST /projects con token válido → 201
+[ ] POST /projects con body inválido → 400
+[ ] GET /projects sin token → 401
+[ ] GET /projects con token válido → 200
+[ ] GET /projects devuelve solo proyectos del usuario autenticado
+[ ] GET /projects/:id con proyecto propio → 200
+[ ] GET /projects/:id con proyecto inexistente → 404
+[ ] GET /projects/:id de otro usuario → 404
+[ ] DELETE /projects/:id con proyecto propio → 204
+[ ] DELETE /projects/:id inexistente → 404
+[ ] DELETE /projects/:id de otro usuario → 404
+
+CHEKLIST POSTMAN:
+
+Flujo recomendado:
+
+[ ] Registrar usuario 1
+[ ] Login usuario 1
+[ ] Crear proyecto usuario 1
+[ ] Listar proyectos usuario 1
+[ ] Obtener proyecto usuario 1 por id
+[ ] Eliminar proyecto usuario 1
+
+Luego:
+
+[ ] Registrar usuario 2
+[ ] Login usuario 2
+[ ] Crear proyecto usuario 2
+[ ] Comprobar separación entre proyectos de user-1 y user-2
+
+Endpoints a probar:
+
+POST /auth/register
+POST /auth/login
+POST /projects
+GET /projects
+GET /projects/:id
+DELETE /projects/:id
+
+Vamos a ir con TDD, así que no empezamos creando el endpoint.
 
 1.[CreateProjectUseCase]
 
@@ -372,9 +369,6 @@ Creamos en aplicacion el caso de uso de CreateProjectUseCase
 
 Ahora probamos los tests y pasan.
 
-
-
-
 2.[ListUserProjectsUseCase]
 
 Este caso de uso responderá a:
@@ -383,27 +377,21 @@ Este caso de uso responderá a:
 
 - Ejemplo:
 
-  >await listUserProjectsUseCase.execute({
-    ownerId: "user-1",
-   });
+  > await listUserProjectsUseCase.execute({
+  > ownerId: "user-1",
+  > });
 
   > Debería devolver solo los proyectos cuyo ownerId sea "user-1".
 
 Ya sabemos crear proyectos. El siguiente paso lógico es poder listarlos. El objetivo será comprobar esta regla:
 
- - Un usuario solo puede listar sus propios proyectos.
+- Un usuario solo puede listar sus propios proyectos.
 
- - Es decir, si existen proyectos de user-1 y de user-2, cuando liste user-1 no deben aparecer los de user-2.
+- Es decir, si existen proyectos de user-1 y de user-2, cuando liste user-1 no deben aparecer los de user-2.
 
 Generamos el test ya que estamos siguiendo TDD, este fallara porqueimporta el caso de uso y todavia no esta creado.
 
 Creamos el caso de uso y corremos los tests, estos deben pasar
-
-
-
-
-
-
 
 3.[GetProjectByIdUseCase]
 
@@ -411,14 +399,14 @@ Este caso de uso sirve para obtener un proyecto concreto.
 
 Responde a esta pregunta:
 
- - Dame este proyecto concreto, pero solo si es mío.
+- Dame este proyecto concreto, pero solo si es mío.
 
-    >Ejemplo:
+  > Ejemplo:
 
-        await getProjectByIdUseCase.execute({
-          projectId: "project-1",
-          ownerId: "user-1",
-        });
+       await getProjectByIdUseCase.execute({
+         projectId: "project-1",
+         ownerId: "user-1",
+       });
 
 Si se hace una peticion pidiendo un proyecto en concreto, podria darse la opcion de que un usuario pudiese recuperar el proyecto de otra persona , haciendolo asi, solo recupera proyectos que son suyos
 
@@ -428,22 +416,15 @@ Creamos el caso de uso, corremos los test y este pasa.
 
 Hemos creado un tipo de error:ProjectNotFoundError, si el proyecto en concreto no existe lanzara este tipo de error, esto sirve para que luego middleware pueda convertirlo en http
 
-
-
-
-
-
-
-
 4.[DeleteProjectUseCase]
 
 Este caso de uso servirá para:
 
- - Borrar un proyecto concreto, pero solo si pertenece al usuario autenticado.
+- Borrar un proyecto concreto, pero solo si pertenece al usuario autenticado.
 
 Y como ya hemos decidido usar errores propios, si el proyecto no existe o no es del usuario, lanzará:
 
- - ProjectNotFoundError
+- ProjectNotFoundError
 
 Recibirá esto:
 
@@ -454,33 +435,215 @@ Recibirá esto:
 
 Y deberá hacer:
 
-  1. Buscar el proyecto por projectId y ownerId.
-  2. Si no existe, lanzar ProjectNotFoundError.
-  3. Si existe, borrarlo.
-
+1. Buscar el proyecto por projectId y ownerId.
+2. Si no existe, lanzar ProjectNotFoundError.
+3. Si existe, borrarlo.
 
 Primeor creamos el test unitario, este no pasara orque aun no esta impelementado.
 
 Implementamos el caso de uso y pasamos los test.
 
+Ahora creamos una implementacion real en infrastructura del repositorio, de momento sera en memoria
 
+Ahora vamos a modificar el container, ahora mismo tenemos piezas sueltas ( casos de uso y demas) en el container lo que vamos a hacer es intanciarlo todo ( con lo que ya esta) para tener todo conectado.
 
+Con esto, ya tenemos conectada la capa de aplicación de Projects al container.
 
+[IMPLEMENTACION DE HTTP Y ENDPOINT]
 
+1.[POST /projects]
 
+Ahora pasamos a la parte de HTTP. Vamos a crear el primer endpoint de proyectos:
 
+- POST /projects
 
+Este endpoint servirá para que un usuario autenticado cree un proyecto.
 
+Qué debe pasar:
 
+- El usuario hará una petición como esta:
 
+  POST /projects
+  Authorization: Bearer TOKEN
+  Content-Type: application/json
 
+  Body:
 
+  {
+  "name": "DevMind API",
+  "description": "Backend con IA para consultar proyectos software"
+  }
 
+- Y la API debería responder:
 
+  {
+  "id": "algo",
+  "ownerId": "user-id-del-token",
+  "name": "DevMind API",
+  "description": "Backend con IA para consultar proyectos software",
+  "createdAt": "fecha"
+  }
 
+  Con status:
 
+  201 Created
 
+Importante:
 
+- El cliente no debe mandar el ownerId.
 
+       Mal:
 
+       {
+         "ownerId": "user-1",
+         "name": "DevMind API"
+       }
 
+       Bien:
+
+       {
+         "name": "DevMind API",
+         "description": "Backend con IA para consultar proyectos software"
+       }
+
+- Por qué?
+
+  > Porque el ownerId debe salir del token JWT.
+
+  > Es decir:
+
+      authMiddleware lee el token
+      authMiddleware obtiene el userId
+      controller usa ese userId como ownerId
+
+  > Así evitamos que un usuario pueda crear proyectos a nombre de otro.
+
+Empezamos creando como primera cosa un test inciial ( que luego iremos modificando con mas endpoint) de integracion del endpoint, este no pasar y nos ponemos a implementarlo.
+
+Ahora implementamos projectcontroller, projectroutyes y prochecschema para que los tests pasen.
+
+2.[GET /projects]
+
+Este endpoint usará:
+
+- ListUserProjectsUseCase
+
+y servirá para:
+
+- Listar solo los proyectos del usuario autenticado.
+
+Queremos que un usuario pueda pedir:
+
+    GET /projects
+    Authorization: Bearer ACCESS_TOKEN
+
+Y recibir algo como:
+
+    [
+      {
+        "id": "project-1",
+        "ownerId": "user-1",
+        "name": "DevMind API",
+        "description": "Backend con IA",
+        "createdAt": "..."
+      }
+    ]
+
+La regla importante es:
+
+- Un usuario solo debe ver sus propios proyectos.
+
+Vamos a constuir el test de integacion que prueba el ednpoint, este lo incluiremos el el fichero de test que ya tenemos creado y que usamos para el anteriro endpoint
+
+Ahora actualizamos el controller de proyectos para que tenga un metodo list para listar los proyectos, actualizamos el ruter para que tenga el ednpoint y ya pasan los test
+
+3.[DELETE /projects/:id]
+
+Este endpoint servirá para:
+
+- Obtener un proyecto concreto del usuario autenticado.
+
+Usará este caso de uso:
+
+- GetProjectByIdUseCase
+
+Queremos poder hacer:
+
+    GET /projects/project-id
+    Authorization: Bearer ACCESS_TOKEN
+
+Y que devuelva ese proyecto solo si pertenece al usuario autenticado.
+
+Vamos a empezar crean en el mismo archivo de test de endpoint , el test para probar este endpoint
+
+4.[DELETE /projects/:id]
+
+Este endpoint servirá para:
+
+- Borrar un proyecto concreto, pero solo si pertenece al usuario autenticado.
+
+Usará este caso de uso:
+
+- DeleteProjectUseCase
+
+Queremos poder hacer:
+
+    DELETE /projects/:id
+    Authorization: Bearer ACCESS_TOKEN
+
+Y que pase esto:
+
+    Si el proyecto existe y es mío → 204 No Content
+    Si no hay token → 401 Unauthorized
+    Si el proyecto no existe → 404 Not Found
+    Si el proyecto es de otro usuario → 404 Not Found
+
+Otra vez, devolvemos 404 cuando es de otro usuario para no revelar que ese proyecto existe.
+
+Empezamos como siempre creando el test de integracion para que falle
+
+En la Fase 2 hemos añadido a DevMind la parte de proyectos.Hasta ahora DevMind ya sabía quién era el usuario gracias al login. En esta fase hemos hecho que cada usuario pueda tener sus propios proyectos dentro de la aplicación.La idea principal ha sido esta:
+
+- Un usuario puede crear, ver, listar y borrar sus propios proyectos.
+- Pero nunca puede acceder a los proyectos de otro usuario.
+
+Seguridad que hemos añadido:
+
+La regla clave de esta fase ha sido:
+
+- Un usuario no puede ver ni borrar proyectos de otro usuario.
+
+Para conseguirlo, no buscamos proyectos solo por su id.
+
+En vez de hacer:
+
+- Busca este proyecto por id.
+
+hacemos:
+
+- Busca este proyecto por id y además comprueba que pertenece a este usuario.
+
+Qué hemos hecho a nivel de arquitectura
+
+Hemos seguido la misma estructura limpia del proyecto:
+
+domain
+→ definición de Project y ProjectRepository.
+
+application
+→ casos de uso:
+CreateProjectUseCase
+ListUserProjectsUseCase
+GetProjectByIdUseCase
+DeleteProjectUseCase
+
+infrastructure
+→ InMemoryProjectRepository.
+
+transport
+→ rutas, controller y schema HTTP de projects.
+
+container
+→ conexión de los casos de uso con el repositorio real temporal.
+
+## . FASE 3

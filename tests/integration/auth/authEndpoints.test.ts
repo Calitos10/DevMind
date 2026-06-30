@@ -1,6 +1,6 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { app } from "../../src/app";
+import { app } from "../../../src/app";
 
 describe("Auth HTTP endpoints", () => {
   it("POST /auth/register should register a new user", async () => {

@@ -3,8 +3,8 @@ import { container } from "../../../container/container";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { validateBody } from "../middleware/validateBodyMiddleware";
-import { AuthController } from "../auth/authController";
-import { loginSchema, registerSchema } from "../auth/authSchema";
+import { AuthController } from "./authController";
+import { loginSchema, registerSchema } from "./authSchema";
 
 export const authRoutes = Router();
 
