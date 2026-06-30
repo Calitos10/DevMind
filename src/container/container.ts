@@ -14,14 +14,24 @@ import { ListUserProjectsUseCase } from "../application/projects/listUserProject
 import { GetProjectByIdUseCase } from "../application/projects/getProjectByIdUseCase";
 import { DeleteProjectUseCase } from "../application/projects/deleteProjectUseCase";
 
+//Imports para la parte de archivos
+import { InMemoryProjectFileRepository } from "../infrastructure/repositoryAdpater/InMemoryProjectFileRepository";
+import { CryptoFileHashGenerator } from "../infrastructure/fileAdapter/cryptoFileHashGenerator";
+import { CreateProjectFileUseCase } from "../application/projectFiles/createProjectFileUseCase";
+import { DeleteProjectFileUseCase } from "../application/projectFiles/deleteProjectFileUseCase";
+import { GetProjectFileByIdUseCase } from "../application/projectFiles/getProjectFileByIdUseCase";
+import { ListProjectFilesUseCase } from "../application/projectFiles/listProjectFilesUseCase";
+
 //Instanciamos los repositorios
 const userRepository = new InMemoryUserRepository();
 const projectRepository = new InMemoryProjectRepository();
+const projectFileRepository = new InMemoryProjectFileRepository();
 
 //Instanciamos las implementaciones de puertos
 const passwordHasher = new BcryptPasswordHasher();
 const tokenService = new JwtTokenService();
 const idGenerator = new CryptoIdGenerator();
+const fileHashGenerator = new CryptoFileHashGenerator();
 
 export const container = {
   userRepository,
@@ -50,6 +60,28 @@ export const container = {
   getProjectByIdUseCase: new GetProjectByIdUseCase(projectRepository),
 
   deleteProjectUseCase: new DeleteProjectUseCase(projectRepository),
+
+  createProjectFileUseCase: new CreateProjectFileUseCase(
+    projectRepository,
+    projectFileRepository,
+    idGenerator,
+    fileHashGenerator,
+  ),
+
+  listProjectFilesUseCase: new ListProjectFilesUseCase(
+    projectRepository,
+    projectFileRepository,
+  ),
+
+  getProjectFileByIdUseCase: new GetProjectFileByIdUseCase(
+    projectRepository,
+    projectFileRepository,
+  ),
+
+  deleteProjectFileUseCase: new DeleteProjectFileUseCase(
+    projectRepository,
+    projectFileRepository,
+  ),
 
   tokenService,
 };

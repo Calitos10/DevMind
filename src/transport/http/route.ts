@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authRoutes } from "./auth/authRutes";
 import { projectRoutes } from "./project/projectRoutes";
+import { projectFileRoutes } from "./projectFile/projectFileRoutes";
 
 export const router = Router();
 
@@ -14,3 +15,4 @@ router.get("/health", (_req, res) => {
 
 router.use("/auth", authRoutes);
 router.use("/projects", projectRoutes);
+router.use("/projects", projectFileRoutes);

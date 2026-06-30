@@ -647,3 +647,443 @@ container
 → conexión de los casos de uso con el repositorio real temporal.
 
 ## . FASE 3
+
+Hasta ahora DevMind tiene esto:
+
+    User
+    └── Project
+
+Es decir:
+
+- Un usuario puede tener proyectos.
+
+- Pero esos proyectos todavía están vacíos. No tienen archivos de código dentro.
+
+La Fase 3 consiste en añadir esta parte:
+
+    User
+    └── Project
+          └── ProjectFile
+
+Es decir:
+
+- Un proyecto puede tener varios archivos.
+
+
+
+
+
+
+La Fase 3 la vamos a hacer en partes pequeñas.
+
+Fase 3.1 — Base interna de ProjectFiles
+
+Primero creamos la lógica interna, sin HTTP todavía.
+
+Aquí haremos:
+
+    ProjectFile entity
+    ProjectFileRepository
+    CreateProjectFileUseCase
+    InMemoryProjectFileRepository
+
+La primera funcionalidad será:
+
+Crear un archivo dentro de un proyecto.
+
+Para terminar esta parte lo que haremos es construir las implementaciones de infraestructura de los puertos de aplicacion
+
+
+Fase 3.2 — Endpoints HTTP para ProjectFiles
+
+Después añadiremos endpoints como:
+
+    POST   /projects/:projectId/files
+    GET    /projects/:projectId/files
+    GET    /projects/:projectId/files/:fileId
+    DELETE /projects/:projectId/files/:fileId
+
+Al principio enviaremos el archivo como JSON, no como ZIP.
+
+Ejemplo:
+
+    {
+      "path": "src/app.ts",
+      "language": "typescript",
+      "content": "console.log('hello');"
+    }
+
+Esto nos permite probar la lógica sin mezclar todavía subida de archivos reales
+
+
+
+Fase 3.3 — Subida de ZIP
+
+Más adelante añadiremos algo como:
+
+    POST /projects/:projectId/upload
+
+Ahí sí entraremos en:
+
+    subir ZIP
+    descomprimir
+    recorrer carpetas
+    ignorar node_modules, dist, .git, .env
+    leer archivos útiles
+    guardar muchos ProjectFiles
+
+Pero no empezamos por ahí porque sería mezclar demasiadas cosas.
+
+
+
+
+Fase 3.4 — Actualización / resubida del proyecto
+
+Después podremos permitir que el usuario vuelva a subir su proyecto.
+
+Primera versión sencilla:
+
+    1. Borro archivos anteriores del proyecto.
+    2. Guardo los archivos nuevos.
+    3. La base de conocimiento queda actualizada.
+
+Más adelante, versión mejorada:
+
+  Comparar hashes para detectar archivos iguales, modificados, nuevos o eliminados.
+
+
+
+Regla de seguridad de Fase 3
+
+Esta regla sigue siendo igual de importante que en Fase 2:
+
+Un usuario no puede añadir, ver ni borrar archivos de un proyecto que no es suyo.
+
+Por eso, antes de crear un archivo, el caso de uso debe comprobar:
+
+    ¿El proyecto existe?
+    ¿Y pertenece al usuario autenticado?
+
+Es decir, usaremos de nuevo:
+
+    projectRepository.findByIdAndOwnerId(projectId, ownerId)
+
+Si no existe o no pertenece al usuario:
+
+    throw new ProjectNotFoundError();
+
+Así evitamos que alguien pueda meter archivos en proyectos ajenos.
+
+
+
+
+
+
+IMPLEMENTACION DE LA FASE 3
+
+Fase 3.1 — Base interna de ProjectFiles
+
+1.[createProjectFileUseCase]
+
+Empezamos (siguiendo TDD) creando el test unitario del caso de uso para crear un archivo.
+Este test es un basico , para probar el flujo del caso de uso, obviamente ahora va a fallar ya que no hay nada creado aun.
+
+Ahora nos disponemos a crear la entidad projectFIle y la interfaz de repositorio projectRepository
+
+Ahora nos ponemos a crear un puerto fileHashGeneratorPort porque necesitamos que la app tenga un fichero para hasear el codigp, de momento no nos hace falta saber como se hace, con la interfaz vale
+
+Ahora continuamos probando los tests, estos pasan y por lo tanto terminamos el ciclo base de TDD, ahora podemos añadir test para implementar por ejemplo funcionalidades de seguridad
+
+Ahora nos ponemos a implementar lls adaptadores en infraestructura del puerto del repositorio y del hasheador.
+
+Ahora tenmos que modificar container para que instancie tambien esto
+
+
+
+2.[ListProjectFilesUseCase]
+
+Su responsabilidad será:
+
+ - Listar los archivos de un proyecto, pero solo si ese proyecto pertenece al usuario autenticado.
+
+Es decir:
+
+    ownerId + projectId
+            ↓
+    comprobar que el proyecto pertenece al usuario
+            ↓
+    devolver los ProjectFile de ese proyecto
+
+
+Empezamos como siempre creando el test unitario.
+
+El test falla porque todavia no hay nada creado
+
+Modificamos tanto el puerto como el adapter de ProjectFileRepository y InMemoryProjectFileRepository para añadirle el metodo de findByProjectId para poder buscar y listar los archivos.
+
+Creamos el caso de uso de  ListProjectFilesUseCase
+
+Modificamos el anteriro test del caso de uso de crear porque el fake del repositorio de archivos solo implementa un metodo del repositorio.
+
+
+3.[GetProjectFileByIdUseCase]
+
+Su responsabilidad será:
+
+ - Obtener un archivo concreto de un proyecto del usuario autenticado.
+
+Es decir:
+
+    ownerId + projectId + fileId
+            ↓
+    comprobar que el proyecto pertenece al usuario
+            ↓
+    buscar el archivo dentro de ese proyecto
+            ↓
+    devolverlo
+
+Creamos su tes unitario. Este no pasa porque tanto el caso de uso , como el nuevo tipo de error que hemos incluido no existe.
+
+Creamos el nuevo tipo de error : ProjectFileNotFoundError
+
+ACtualizamos tanto la interfaz del repositorio de archivos como la implementacion.
+
+Nos ponemos a crear el caso de uso
+
+
+4.[DeleteProjectFileUseCase]
+
+Su responsabilidad será:
+
+ - Borrar un archivo concreto de un proyecto del usuario autenticado.
+
+La seguridad será la misma:
+
+    1. Comprobar que el proyecto pertenece al usuario.
+    2. Comprobar que el archivo existe dentro de ese proyecto.
+    3. Borrar el archivo.
+
+
+Creamos el test unitario.
+
+ACtualizamos tanto la interfaz del repositorio de archivos como la implementacion.
+
+Nos ponemos a crear el caso de uso
+
+
+Con esto, dejamos cerrada la capa interna de ProjectFiles:
+
+✅ CreateProjectFileUseCase
+✅ ListProjectFilesUseCase
+✅ GetProjectFileByIdUseCase
+✅ DeleteProjectFileUseCase
+✅ ProjectFileRepository completo
+✅ InMemoryProjectFileRepository completo
+✅ Container actualizado
+✅ Tests unitarios pasando
+
+Ahora  pasamos a la parte HTTP, porque ya tenemos todos los casos de uso preparados.
+
+
+
+
+
+
+
+
+
+
+
+Fase 3.2 — Endpoints HTTP para ProjectFiles
+
+Pasamos al siguiente bloque: HTTP 
+
+Seguimos con TDD pragmático:
+
+    1. Primero test de integración HTTP.
+    2. El test falla porque todavía no existe el endpoint.
+    3. Creamos schema, controller y routes.
+    4. Conectamos la ruta en app.ts.
+    5. El test pasa.
+
+
+En estas fase todo es mas simple, incluso datos que le pasamos a los endpoitn que son hardcodeaods y que ma sadelante sera la app la que los saque y se los pase al endpoint
+
+
+
+Vamos a crear el fichero de test de integracion, iremos construyendo los tests de cada enpoint, y luego su implementacion:
+
+
+
+1. [POST /projects/:projectId/files]
+
+Crea un archivo dentro del proyecto con id X
+
+El cliente mandará esto en el body:
+
+    {
+      "path": "src/app.ts",
+      "language": "typescript",
+      "content": "console.log('hello');"
+    }
+
+Pero no manda ni ownerId ni projectId en el body.
+
+El sistema los saca de aquí:
+
+    ownerId   → req.user.userId, gracias al authMiddleware
+    projectId → req.params.projectId
+
+Esto mantiene la misma idea que en projects: el cliente no decide quién es el dueño.
+
+
+Creamos el test para este endpoint, el cual falla.
+
+Ahora implementamos para que el test pase. El endpoint que queremos crear es:
+
+    POST /projects/:projectId/files
+
+Y debe hacer esto:
+
+    1. Comprobar que el usuario está autenticado.
+    2. Validar el body con Zod.
+    3. Sacar ownerId desde req.user.userId.
+    4. Sacar projectId desde req.params.projectId.
+    5. Llamar a createProjectFileUseCase.
+    6. Devolver 201 con el ProjectFile creado.
+
+
+Primero creamos el schema pra que el validatebody ( middlware) pueda validar lo que le pasamos
+
+Ahora creamos el controllador para projectfile
+
+Ahora creamos la rutas pra conectar el endpint con los middleware y el controller
+
+
+
+
+
+
+
+2. [GET /projects/:projectId/files]
+
+Creamos el test para este endpoint, el cual falla.
+
+Ahora implementamos para que el test pase.
+
+Añadimos el metodo list dentro del controller de archivos
+
+Añadimos al ruter la ruta de get para listar los archivos
+
+Ahora los test pasan
+
+Ahora añadimos test en el archivo para comprobar casos de errores y seguridad
+
+Dejamos cerrado este endpoint:
+
+    GET /projects/:projectId/files
+
+Con estos casos:
+
+    ✅ con token válido → 200
+    ✅ sin token → 401
+    ✅ proyecto inexistente → 404
+    ✅ proyecto de otro usuario → 404
+
+
+
+
+
+3. [GET /projects/:projectId/files/:fileId]
+
+Este servirá para obtener un archivo concreto dentro de un proyecto.
+
+Creamos el test para este endpoint, el cual falla.
+
+Ahora implementamos para que el test pase
+
+Añadimos el metodo getbyID al controller
+
+Añadimos la ruta en el ruter para este endpoint
+
+los test pasan, ahora añadimos nuevos test para asegurarnos cosas de errores y seguridad.
+
+dejamos cerrado también:
+
+    GET /projects/:projectId/files/:fileId
+
+Con estos casos:
+
+    ✅ con token válido → 200
+    ✅ sin token → 401
+    ✅ proyecto inexistente → 404
+    ✅ archivo inexistente → 404
+    ✅ proyecto de otro usuario → 404
+
+
+
+4. [DELETE /projects/:projectId/files/:fileId]
+
+Este endpoint usará el caso de uso que ya tenemos:
+
+    DeleteProjectFileUseCase
+
+Y debe devolver:
+
+    204 No Content
+
+igual que hicimos con DELETE /projects/:id.
+
+Creamos el test para este endpoint, el cual falla.
+
+Ahora implementamos para que el test pase
+
+Añadimos el metodo getbyID al controller
+
+Añadimos la ruta en el ruter para este endpoint
+
+los test pasan, ahora añadimos nuevos test para asegurarnos cosas de errores y seguridad.
+
+
+
+
+
+
+
+
+
+Podemos Dar por cerrada la Fase 3 — ProjectFiles básica.
+
+Ahora mismo esta implementado:
+
+    User
+    └── Project
+          └── ProjectFile
+
+Y DevMind ya puede:
+
+    ✅ Crear archivos dentro de un proyecto
+    ✅ Listar archivos de un proyecto
+    ✅ Obtener un archivo concreto
+    ✅ Borrar un archivo concreto
+    ✅ Validar que el proyecto pertenece al usuario autenticado
+    ✅ Evitar acceso a proyectos de otros usuarios
+    ✅ Calcular size
+    ✅ Calcular hash
+    ✅ Guardar ProjectFiles en memoria
+
+Además, tienes cubiertos los endpoints:
+
+    POST   /projects/:projectId/files
+    GET    /projects/:projectId/files
+    GET    /projects/:projectId/files/:fileId
+    DELETE /projects/:projectId/files/:fileId
+
+Con casos de:
+
+    ✅ 200 / 201 / 204 correctos
+    ✅ 400 body inválido
+    ✅ 401 sin token
+    ✅ 404 proyecto inexistente
+    ✅ 404 proyecto de otro usuario
+    ✅ 404 archivo inexistente
