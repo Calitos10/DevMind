@@ -5,17 +5,17 @@ import { RegisterUserUseCase } from "../application/auth/registerUserUseCase";
 import { BcryptPasswordHasher } from "../infrastructure/authAdapters/bcryptPasswordHasher";
 import { JwtTokenService } from "../infrastructure/authAdapters/jwtTokenService";
 import { CryptoIdGenerator } from "../infrastructure/authAdapters/cryptoIdGenerator";
-import { InMemoryUserRepository } from "../infrastructure/repositoryAdpater/inMemoryUserRepository";
+import { InMemoryUserRepository } from "../infrastructure/repositoryAdapter/inMemoryUserRepository";
 
 //Imports para la parte de los proyectos
-import { InMemoryProjectRepository } from "../infrastructure/repositoryAdpater/InMemoryProjectRepository";
+import { InMemoryProjectRepository } from "../infrastructure/repositoryAdapter/inMemoryProjectRepository";
 import { CreateProjectUseCase } from "../application/projects/createProjectUseCase";
 import { ListUserProjectsUseCase } from "../application/projects/listUserProjectsUseCase";
 import { GetProjectByIdUseCase } from "../application/projects/getProjectByIdUseCase";
 import { DeleteProjectUseCase } from "../application/projects/deleteProjectUseCase";
 
 //Imports para la parte de archivos
-import { InMemoryProjectFileRepository } from "../infrastructure/repositoryAdpater/InMemoryProjectFileRepository";
+import { InMemoryProjectFileRepository } from "../infrastructure/repositoryAdapter/inMemoryProjectFileRepository";
 import { CryptoFileHashGenerator } from "../infrastructure/fileAdapter/cryptoFileHashGenerator";
 import { CreateProjectFileUseCase } from "../application/projectFiles/createProjectFileUseCase";
 import { DeleteProjectFileUseCase } from "../application/projectFiles/deleteProjectFileUseCase";

@@ -41,9 +41,10 @@ Actualmente el proyecto tiene implementadas las siguientes fases:
 Fase 0 — Base técnica de la API ✅
 Fase 1 — Autenticación de usuarios ✅
 Fase 2 — Gestión de proyectos ✅
+Fase 3 — Project Files ✅
 ```
 
-Todavía no está implementada la subida de archivos, indexación de código, embeddings ni RAG. Eso vendrá en fases posteriores.
+Todavía no está implementada la indexación de código, embeddings ni RAG. Eso vendrá en fases posteriores.
 
 ---
 
@@ -98,6 +99,10 @@ CreateProjectUseCase
 ListUserProjectsUseCase
 GetProjectByIdUseCase
 DeleteProjectUseCase
+CreateProjectFileUseCase
+ListProjectFilesUseCase
+GetProjectFileByIdUseCase
+DeleteProjectFileUseCase
 ```
 
 Los casos de uso coordinan la lógica de aplicación usando interfaces/puertos, no implementaciones concretas.
@@ -114,6 +119,7 @@ JwtTokenService
 CryptoIdGenerator
 InMemoryUserRepository
 InMemoryProjectRepository
+InMemoryProjectFileRepository
 ```
 
 Actualmente los datos se guardan en memoria. Esto significa que al reiniciar el servidor se pierden los usuarios y proyectos creados.
@@ -140,6 +146,8 @@ authController
 authRoutes
 projectController
 projectRoutes
+projectFileController
+projectFileRoutes
 authMiddleware
 validateBodyMiddleware
 errorMiddleware
@@ -156,6 +164,7 @@ Ejemplo:
 ```txt
 RegisterUserUseCase → InMemoryUserRepository + BcryptPasswordHasher + CryptoIdGenerator
 CreateProjectUseCase → InMemoryProjectRepository + CryptoIdGenerator
+CreateProjectFileUseCase → InMemoryProjectRepository + InMemoryProjectFileRepository + CryptoIdGenerator
 ```
 
 ### `shared`
@@ -170,6 +179,7 @@ UserAlreadyExistsError
 InvalidCredentialsError
 UnauthorizedError
 ProjectNotFoundError
+ProjectFileNotFoundError
 ```
 
 ---
@@ -579,6 +589,180 @@ Cuando un proyecto pertenece a otro usuario, también se devuelve `404 Not Found
 
 ---
 
+## Project Files
+
+La Fase 3 implementa la gestión de archivos dentro de un proyecto.
+
+Esta fase responde a la pregunta:
+
+```txt
+¿Qué archivos tiene cada proyecto?
+```
+
+Cada archivo pertenece a un proyecto mediante `projectId`.
+
+Relación actual:
+
+```txt
+User
+ └── Project
+      └── ProjectFile
+```
+
+Todos los endpoints de `/projects/:projectId/files` están protegidos con JWT.
+
+El `ownerId` se obtiene desde el token. Esto garantiza que un usuario solo puede acceder a archivos de proyectos que le pertenecen.
+
+---
+
+### Añadir archivo a un proyecto
+
+```txt
+POST /projects/:projectId/files
+```
+
+Header requerido:
+
+```txt
+Authorization: Bearer ACCESS_TOKEN
+```
+
+Body:
+
+```json
+{
+  "path": "src/app.ts",
+  "language": "typescript",
+  "content": "console.log('hello');"
+}
+```
+
+Respuesta esperada:
+
+```json
+{
+  "id": "file-id",
+  "projectId": "project-id",
+  "path": "src/app.ts",
+  "language": "typescript",
+  "content": "console.log('hello');",
+  "size": 22,
+  "hash": "hash-string",
+  "createdAt": "2026-01-01T00:00:00.000Z"
+}
+```
+
+Posibles errores:
+
+```txt
+400 Bad Request — body inválido
+401 Unauthorized — token ausente o inválido
+404 Not Found — el proyecto no existe o no pertenece al usuario autenticado
+```
+
+---
+
+### Listar archivos de un proyecto
+
+```txt
+GET /projects/:projectId/files
+```
+
+Header requerido:
+
+```txt
+Authorization: Bearer ACCESS_TOKEN
+```
+
+Respuesta esperada:
+
+```json
+[
+  {
+    "id": "file-id",
+    "projectId": "project-id",
+    "path": "src/app.ts",
+    "language": "typescript",
+    "content": "console.log('hello');",
+    "size": 22,
+    "hash": "hash-string",
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+]
+```
+
+Posibles errores:
+
+```txt
+401 Unauthorized — token ausente o inválido
+404 Not Found — el proyecto no existe o no pertenece al usuario autenticado
+```
+
+---
+
+### Obtener un archivo concreto
+
+```txt
+GET /projects/:projectId/files/:fileId
+```
+
+Header requerido:
+
+```txt
+Authorization: Bearer ACCESS_TOKEN
+```
+
+Respuesta esperada:
+
+```json
+{
+  "id": "file-id",
+  "projectId": "project-id",
+  "path": "src/app.ts",
+  "language": "typescript",
+  "content": "console.log('hello');",
+  "size": 22,
+  "hash": "hash-string",
+  "createdAt": "2026-01-01T00:00:00.000Z"
+}
+```
+
+Posibles errores:
+
+```txt
+401 Unauthorized — token ausente o inválido
+404 Not Found — el proyecto o el archivo no existen, o no pertenecen al usuario autenticado
+```
+
+---
+
+### Borrar un archivo
+
+```txt
+DELETE /projects/:projectId/files/:fileId
+```
+
+Header requerido:
+
+```txt
+Authorization: Bearer ACCESS_TOKEN
+```
+
+Respuesta esperada:
+
+```txt
+204 No Content
+```
+
+Posibles errores:
+
+```txt
+401 Unauthorized — token ausente o inválido
+404 Not Found — el proyecto o el archivo no existen, o no pertenecen al usuario autenticado
+```
+
+---
+
 ## Tests
 
 El proyecto usa Vitest y Supertest.
@@ -633,6 +817,37 @@ DELETE /projects/:id con proyecto de otro usuario → 404
 
 ---
 
+## Tests de Project Files
+
+Casos cubiertos:
+
+```txt
+POST /projects/:projectId/files con token y body válido → 201
+POST /projects/:projectId/files sin token → 401
+POST /projects/:projectId/files con body inválido → 400
+POST /projects/:projectId/files en proyecto inexistente → 404
+POST /projects/:projectId/files en proyecto de otro usuario → 404
+
+GET /projects/:projectId/files con token válido → 200
+GET /projects/:projectId/files sin token → 401
+GET /projects/:projectId/files en proyecto inexistente → 404
+GET /projects/:projectId/files en proyecto de otro usuario → 404
+
+GET /projects/:projectId/files/:fileId con archivo propio → 200
+GET /projects/:projectId/files/:fileId sin token → 401
+GET /projects/:projectId/files/:fileId en proyecto inexistente → 404
+GET /projects/:projectId/files/:fileId con archivo inexistente → 404
+GET /projects/:projectId/files/:fileId en proyecto de otro usuario → 404
+
+DELETE /projects/:projectId/files/:fileId con archivo propio → 204
+DELETE /projects/:projectId/files/:fileId sin token → 401
+DELETE /projects/:projectId/files/:fileId en proyecto inexistente → 404
+DELETE /projects/:projectId/files/:fileId con archivo inexistente → 404
+DELETE /projects/:projectId/files/:fileId en proyecto de otro usuario → 404
+```
+
+---
+
 ## TDD aplicado
 
 El proyecto aplica TDD pragmático por capas.
@@ -667,6 +882,7 @@ InvalidCredentialsError → 401
 UnauthorizedError → 401
 UserNotFoundError → 404
 ProjectNotFoundError → 404
+ProjectFileNotFoundError → 404
 ```
 
 Los errores técnicos inesperados se manejan como errores internos del servidor.
@@ -674,39 +890,6 @@ Los errores técnicos inesperados se manejan como errores internos del servidor.
 ---
 
 ## Próximas fases previstas
-
-### Fase 3 — Project Files / subida de código
-
-Permitirá subir proyectos reales, probablemente en formato `.zip`.
-
-El sistema deberá:
-
-```txt
-1. Recibir un ZIP.
-2. Descomprimirlo temporalmente.
-3. Recorrer carpetas y subcarpetas.
-4. Ignorar archivos y carpetas innecesarias.
-5. Guardar archivos útiles asociados a un Project.
-```
-
-Archivos y carpetas a ignorar:
-
-```txt
-node_modules/
-dist/
-.git/
-coverage/
-.env
-.env.local
-.DS_Store
-binarios
-imágenes pesadas
-vídeos
-```
-
-Especialmente `.env`, porque puede contener secretos.
-
----
 
 ### Fase futura — RAG sobre código
 

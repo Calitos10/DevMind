@@ -1,39 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { DeleteProjectUseCase } from "../../../../src/application/projects/deleteProjectUseCase";
-import type { Project } from "../../../../src/domain/entities/project";
-import type { ProjectRepository } from "../../../../src/domain/repository/projectRepository";
 import { ProjectNotFoundError } from "../../../../src/shared/errors/project-not-found.error";
-
-class FakeProjectRepository implements ProjectRepository {
-  private projects: Project[] = [];
-
-  async save(project: Project): Promise<Project> {
-    this.projects.push(project);
-    return project;
-  }
-
-  async findByOwnerId(ownerId: string): Promise<Project[]> {
-    return this.projects.filter((project) => project.ownerId === ownerId);
-  }
-
-  async findByIdAndOwnerId(
-    id: string,
-    ownerId: string
-  ): Promise<Project | null> {
-    return (
-      this.projects.find(
-        (project) => project.id === id && project.ownerId === ownerId
-      ) ?? null
-    );
-  }
-
-  async deleteByIdAndOwnerId(id: string, ownerId: string): Promise<void> {
-    this.projects = this.projects.filter(
-      (project) => !(project.id === id && project.ownerId === ownerId)
-    );
-  }
-}
+import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
 
 describe("DeleteProjectUseCase", () => {
   it("should delete a project when it belongs to the user", async () => {
@@ -56,7 +25,7 @@ describe("DeleteProjectUseCase", () => {
 
     const deletedProject = await projectRepository.findByIdAndOwnerId(
       "project-1",
-      "user-1"
+      "user-1",
     );
 
     expect(deletedProject).toBeNull();
@@ -79,7 +48,7 @@ describe("DeleteProjectUseCase", () => {
       useCase.execute({
         projectId: "project-1",
         ownerId: "user-1",
-      })
+      }),
     ).rejects.toBeInstanceOf(ProjectNotFoundError);
   });
 
@@ -92,7 +61,7 @@ describe("DeleteProjectUseCase", () => {
       useCase.execute({
         projectId: "non-existing-project",
         ownerId: "user-1",
-      })
+      }),
     ).rejects.toBeInstanceOf(ProjectNotFoundError);
   });
 });

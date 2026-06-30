@@ -1,49 +1,16 @@
 import { describe, expect, it } from "vitest";
+
 import { RegisterUserUseCase } from "../../../../src/application/auth/registerUserUseCase";
-import { UserRepository } from "../../../../src/domain/repository/userRepository";
-import { User } from "../../../../src/domain/entities/user";
-import { PasswordHasher } from "../../../../src/application/ports/passwordHasherPort";
-import { IdGenerator } from "../../../../src/application/ports/idGeneratorPort";
 import { UserAlreadyExistsError } from "../../../../src/shared/errors/user-already-exists.error";
-
-class InMemoryUserRepository implements UserRepository {
-  public users: User[] = [];
-
-  async findByEmail(email: string): Promise<User | null> {
-    return this.users.find((user) => user.email === email) ?? null;
-  }
-
-  async findById(id: string): Promise<User | null> {
-    return this.users.find((user) => user.id === id) ?? null;
-  }
-
-  async save(user: User): Promise<User> {
-    this.users.push(user);
-    return user;
-  }
-}
-
-class FakePasswordHasher implements PasswordHasher {
-  async hash(plainPassword: string): Promise<string> {
-    return `hashed-${plainPassword}`;
-  }
-
-  async compare(plainPassword: string, passwordHash: string): Promise<boolean> {
-    return passwordHash === `hashed-${plainPassword}`;
-  }
-}
-
-class FakeIdGenerator implements IdGenerator {
-  generate(): string {
-    return "user-1";
-  }
-}
+import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
+import { FakePasswordHasher } from "../../../fakes/fakePasswordHasher";
+import { FakeUserRepository } from "../../../fakes/fakeUserRepository";
 
 describe("RegisterUserUseCase", () => {
   it("should register a new user", async () => {
-    const userRepository = new InMemoryUserRepository();
+    const userRepository = new FakeUserRepository();
     const passwordHasher = new FakePasswordHasher();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeIdGenerator("user-1");
 
     const registerUserUseCase = new RegisterUserUseCase(
       userRepository,
@@ -66,9 +33,9 @@ describe("RegisterUserUseCase", () => {
 });
 
 it("should not register a user with an already used email", async () => {
-  const userRepository = new InMemoryUserRepository();
+  const userRepository = new FakeUserRepository();
   const passwordHasher = new FakePasswordHasher();
-  const idGenerator = new FakeIdGenerator();
+  const idGenerator = new FakeIdGenerator("user-1");
 
   const registerUserUseCase = new RegisterUserUseCase(
     userRepository,

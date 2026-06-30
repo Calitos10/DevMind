@@ -1,38 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ListUserProjectsUseCase } from "../../../../src/application/projects/listUserProjectsUseCase";
-import type { Project } from "../../../../src/domain/entities/project";
-import type { ProjectRepository } from "../../../../src/domain/repository/projectRepository";
-
-class FakeProjectRepository implements ProjectRepository {
-  private projects: Project[] = [];
-
-  async save(project: Project): Promise<Project> {
-    this.projects.push(project);
-    return project;
-  }
-
-  async findByOwnerId(ownerId: string): Promise<Project[]> {
-    return this.projects.filter((project) => project.ownerId === ownerId);
-  }
-
-  async findByIdAndOwnerId(
-    id: string,
-    ownerId: string
-  ): Promise<Project | null> {
-    return (
-      this.projects.find(
-        (project) => project.id === id && project.ownerId === ownerId
-      ) ?? null
-    );
-  }
-
-  async deleteByIdAndOwnerId(id: string, ownerId: string): Promise<void> {
-    this.projects = this.projects.filter(
-      (project) => !(project.id === id && project.ownerId === ownerId)
-    );
-  }
-}
+import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
 
 describe("ListUserProjectsUseCase", () => {
   it("should list only projects owned by the user", async () => {

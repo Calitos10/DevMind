@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authRoutes } from "./auth/authRutes";
+import { authRoutes } from "./auth/authRoutes";
 import { projectRoutes } from "./project/projectRoutes";
 import { projectFileRoutes } from "./projectFile/projectFileRoutes";
 

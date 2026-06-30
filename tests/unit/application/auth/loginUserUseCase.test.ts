@@ -1,40 +1,14 @@
 import { describe, expect, it } from "vitest";
+
 import { LoginUserUseCase } from "../../../../src/application/auth/loginUserUseCase";
-import { PasswordHasher } from "../../../../src/application/ports/passwordHasherPort";
 import {
   TokenPayload,
   TokenService,
 } from "../../../../src/application/ports/tokenService";
 import { User } from "../../../../src/domain/entities/user";
-import { UserRepository } from "../../../../src/domain/repository/userRepository";
 import { InvalidCredentialsError } from "../../../../src/shared/errors/invalid-credentials.error";
-
-class InMemoryUserRepository implements UserRepository {
-  public users: User[] = [];
-
-  async findByEmail(email: string): Promise<User | null> {
-    return this.users.find((user) => user.email === email) ?? null;
-  }
-
-  async findById(id: string): Promise<User | null> {
-    return this.users.find((user) => user.id === id) ?? null;
-  }
-
-  async save(user: User): Promise<User> {
-    this.users.push(user);
-    return user;
-  }
-}
-
-class FakePasswordHasher implements PasswordHasher {
-  async hash(plainPassword: string): Promise<string> {
-    return `hashed-${plainPassword}`;
-  }
-
-  async compare(plainPassword: string, passwordHash: string): Promise<boolean> {
-    return passwordHash === `hashed-${plainPassword}`;
-  }
-}
+import { FakePasswordHasher } from "../../../fakes/fakePasswordHasher";
+import { FakeUserRepository } from "../../../fakes/fakeUserRepository";
 
 class FakeTokenService implements TokenService {
   async sign(payload: TokenPayload): Promise<string> {
@@ -53,7 +27,7 @@ class FakeTokenService implements TokenService {
 
 describe("LoginUserUseCase", () => {
   it("should login a user with valid credentials", async () => {
-    const userRepository = new InMemoryUserRepository();
+    const userRepository = new FakeUserRepository();
     const passwordHasher = new FakePasswordHasher();
     const tokenService = new FakeTokenService();
 
@@ -87,7 +61,7 @@ describe("LoginUserUseCase", () => {
   });
 
   it("should not login when email does not exist", async () => {
-    const userRepository = new InMemoryUserRepository();
+    const userRepository = new FakeUserRepository();
     const passwordHasher = new FakePasswordHasher();
     const tokenService = new FakeTokenService();
 
@@ -106,7 +80,7 @@ describe("LoginUserUseCase", () => {
   });
 
   it("should not login when password is invalid", async () => {
-    const userRepository = new InMemoryUserRepository();
+    const userRepository = new FakeUserRepository();
     const passwordHasher = new FakePasswordHasher();
     const tokenService = new FakeTokenService();
 

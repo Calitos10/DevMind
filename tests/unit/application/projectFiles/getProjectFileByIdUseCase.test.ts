@@ -3,78 +3,10 @@ import { describe, expect, it } from "vitest";
 import { GetProjectFileByIdUseCase } from "../../../../src/application/projectFiles/getProjectFileByIdUseCase";
 import { Project } from "../../../../src/domain/entities/project";
 import { ProjectFile } from "../../../../src/domain/entities/projectFile";
-import { ProjectRepository } from "../../../../src/domain/repository/projectRepository";
-import { ProjectFileRepository } from "../../../../src/domain/repository/projectFileRepository";
-import { ProjectNotFoundError } from "../../../../src/shared/errors/project-not-found.error";
 import { ProjectFileNotFoundError } from "../../../../src/shared/errors/projectFileNotFoundError";
-
-class FakeProjectRepository implements ProjectRepository {
-  constructor(private readonly projects: Project[] = []) {}
-
-  async save(project: Project): Promise<Project> {
-    this.projects.push(project);
-    return project;
-  }
-
-  async findByOwnerId(ownerId: string): Promise<Project[]> {
-    return this.projects.filter((project) => project.ownerId === ownerId);
-  }
-
-  async findByIdAndOwnerId(
-    id: string,
-    ownerId: string,
-  ): Promise<Project | null> {
-    return (
-      this.projects.find(
-        (project) => project.id === id && project.ownerId === ownerId,
-      ) ?? null
-    );
-  }
-
-  async deleteByIdAndOwnerId(id: string, ownerId: string): Promise<void> {
-    const projectIndex = this.projects.findIndex(
-      (project) => project.id === id && project.ownerId === ownerId,
-    );
-
-    if (projectIndex >= 0) {
-      this.projects.splice(projectIndex, 1);
-    }
-  }
-}
-
-class FakeProjectFileRepository implements ProjectFileRepository {
-  constructor(public projectFiles: ProjectFile[] = []) {}
-
-  async save(projectFile: ProjectFile): Promise<ProjectFile> {
-    this.projectFiles.push(projectFile);
-    return projectFile;
-  }
-
-  async findByProjectId(projectId: string): Promise<ProjectFile[]> {
-    return this.projectFiles.filter(
-      (projectFile) => projectFile.projectId === projectId,
-    );
-  }
-
-  async findByIdAndProjectId(
-    id: string,
-    projectId: string,
-  ): Promise<ProjectFile | null> {
-    return (
-      this.projectFiles.find(
-        (projectFile) =>
-          projectFile.id === id && projectFile.projectId === projectId,
-      ) ?? null
-    );
-  }
-
-  async deleteByIdAndProjectId(id: string, projectId: string): Promise<void> {
-    this.projectFiles = this.projectFiles.filter(
-      (projectFile) =>
-        !(projectFile.id === id && projectFile.projectId === projectId),
-    );
-  }
-}
+import { ProjectNotFoundError } from "../../../../src/shared/errors/project-not-found.error";
+import { FakeProjectFileRepository } from "../../../fakes/fakeProjectFileRepository";
+import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
 
 describe("GetProjectFileByIdUseCase", () => {
   it("should get a project file from a project owned by the user", async () => {
