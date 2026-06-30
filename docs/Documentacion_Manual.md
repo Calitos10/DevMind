@@ -42,13 +42,33 @@ FASES:
 Fase 0 — Setup inicial
 Fase 1 — Autenticación
 Fase 2 — Proyectos persistentes
-Fase 3 — Subida de archivos
-Fase 4 — Indexación
-Fase 5 — Chat RAG
-Fase 6 — Historial
-Fase 7 — Funciones inteligentes
-Fase 8 — Modo invitado / demo sin registro
-Fase 9 — Onboarding visual / presentación final
+Fase 3 — Subida de archivos (basico)
+Fase 4 — PostgreSQL
+Pasar usuarios, proyectos y projectFiles a base de datos real.
+
+Fase 5 — Subida de ZIP
+Subir ZIP, descomprimir, recorrer carpetas, filtrar archivos inútiles y guardar muchos ProjectFiles.
+
+Fase 6 — Resubida / actualización de proyecto
+Primera versión: borrar archivos anteriores y guardar los nuevos.
+
+Fase 7 — Chunks
+Trocear ProjectFiles en fragmentos preparados para RAG.
+
+Fase 8 — Embeddings + búsqueda semántica
+Generar embeddings y buscar chunks relevantes.
+
+Fase 9 — IA/RAG
+Responder preguntas usando los chunks del proyecto.
+
+Fase 10 — Historial
+Fase 11 — Funciones inteligentes
+Fase 12 — Modo invitado / demo sin registro
+Fase 13 — Onboarding visual / presentación final
+
+
+
+
 
 ## . FASE 0
 
@@ -717,39 +737,6 @@ Esto nos permite probar la lógica sin mezclar todavía subida de archivos reale
 
 
 
-Fase 3.3 — Subida de ZIP
-
-Más adelante añadiremos algo como:
-
-    POST /projects/:projectId/upload
-
-Ahí sí entraremos en:
-
-    subir ZIP
-    descomprimir
-    recorrer carpetas
-    ignorar node_modules, dist, .git, .env
-    leer archivos útiles
-    guardar muchos ProjectFiles
-
-Pero no empezamos por ahí porque sería mezclar demasiadas cosas.
-
-
-
-
-Fase 3.4 — Actualización / resubida del proyecto
-
-Después podremos permitir que el usuario vuelva a subir su proyecto.
-
-Primera versión sencilla:
-
-    1. Borro archivos anteriores del proyecto.
-    2. Guardo los archivos nuevos.
-    3. La base de conocimiento queda actualizada.
-
-Más adelante, versión mejorada:
-
-  Comparar hashes para detectar archivos iguales, modificados, nuevos o eliminados.
 
 
 
@@ -1087,3 +1074,242 @@ Con casos de:
     ✅ 404 proyecto inexistente
     ✅ 404 proyecto de otro usuario
     ✅ 404 archivo inexistente
+
+
+
+
+
+
+
+## . FASE 4
+
+Objetivo de esta fase:
+
+ - Cambiar los repositorios en memoria por repositorios reales en PostgreSQL.
+
+Ahora tienes esto:
+
+    UseCase
+      ↓
+    Repository interface
+      ↓
+    InMemoryRepository
+
+Queremos llegar a esto:
+
+    UseCase
+      ↓
+    Repository interface
+      ↓
+    PostgresRepository
+
+Lo bueno es que los casos de uso no deberían cambiar casi nada, porque ya están programados contra interfaces. Eso era justo una de las ventajas de la arquitectura limpia/hexagonal que estamos usando en DevMind.
+
+
+
+Primero solo vamos a levantar la base de datos. Todavía no vamos a tocar repositorios ni casos de uso.
+
+En la raiz del proyecto vamos a crear un docker-compose.yml
+
+Añadimos y modificamos el . env con el DATABASE_URL
+
+Ahora levantamos el docker compose para ver si se carga el servidor.
+
+
+
+Ahora una vez verificado lo anteriro lo que vamos a conectar es node/express con nuestro servidor de postgre.
+
+Tenemos que instala pg y sus typos 
+
+Una vez hecho eso podemos generar la pool de conecxion en una carpeta llamada database dentro de infraestrucutra dentro meteremos postgresPool.ts
+
+Ahora creamos un script y lo ejecutamos para probar la conexion. Si da buen resultaod, la API ya sabe conectarse con el servidor postgre que esta levantado en el contenedor.
+
+Ahora mismo ya tienes esto:
+
+    DevMind API
+      ↓
+    postgresPool
+      ↓
+    PostgreSQL en Docker
+
+
+Ahora el,siguiente paso es crear las tablas en la base de datos para usuarios, proyectos y archivos, en definitiva generar migraciones.
+
+Antes de seguir: qué vamos a crear
+
+Vamos a crear una carpeta:
+
+    src/infrastructure/database/migrations
+
+Y dentro meteremos archivos SQL.
+
+Por ejemplo:
+
+    001_create_users.sql
+    002_create_projects.sql
+    003_create_project_files.sql
+
+Estos archivos son las instrucciones para crear las tablas.
+
+En estas instrucciones usaremos ON DELETE CASCADE.
+
+Por qué usamos ON DELETE CASCADE:
+
+ - Si se borra un usuario, se borran sus proyectos.
+ - Si se borra un proyecto, se borran automáticamente sus archivos.
+
+Esto arregla el detalle que comentamos antes: no queremos archivos huérfanos si borramos un proyecto.
+
+Una vez creadas las instrucciones vamos a generar un script para realizar las migraciones.
+
+Ejecutamos el script y una vez termine nos metemos en la app tableplus , nos conectamos al docker y vemos si ha funcionado.
+
+Así que ahora tenemos esto creado en PostgreSQL:
+
+    devmind_db
+    ├── users
+    ├── projects
+    └── project_files
+
+Eso quiere decir que ya no tienes solo una base de datos vacía. Ahora ya tienes la estructura real donde irán los datos.
+
+Pero ojo: todavía no hay datos
+
+Ahora mismo las tablas existen, pero probablemente están vacías.
+
+
+Ahora falta la parte realmente importante:
+
+⬜ Crear PostgresUserRepository
+⬜ Crear PostgresProjectRepository
+⬜ Crear PostgresProjectFileRepository
+⬜ Cambiar el container para usar PostgreSQL
+⬜ Probar que los datos aparecen en TablePlus
+
+
+El orden correcto sería:
+
+1. PostgresUserRepository
+2. Cambiar container para usarlo
+3. Probar register/login/auth/me
+4. Ver usuarios en TablePlus
+5. Luego PostgresProjectRepository
+6. Luego PostgresProjectFileRepository
+
+
+EMPEZAMOS:
+
+1. [PostgresUserRepository]
+
+Generamos el repositorio de postgre, generamos un script para probarlo y si funciona podemos cambiarlo.
+
+Ahora podemos modificar el container para que nuestra api use el repositorio de postgre para los usarios , tenemos que modificar los imports y demas del containe
+
+Con esto habremos migrado users.
+
+La situación quedaría así:
+
+    users          → PostgreSQL ✅
+    projects       → memoria todavía
+    project_files  → memoria todavía
+
+
+
+2. [PostgresProjectRepository]
+
+hora vamos a hacer exactamente lo mismo con los proyectos.
+
+Es decir:
+
+  InMemoryProjectRepository
+              ↓
+  PostgresProjectRepository
+
+Y una vez eso funcione:
+
+Vamos a crear el repositorio de postgre dentro de infraestructura
+
+Ahora creamos el script para probarlo. Como projects.owner_id referencia a users.id, primero necesitamos crear un usuario real en PostgreSQL.
+
+El scrip funciona como se esperaba, ahora vamos a conectar el repositprio al container
+
+Lo conectamos y vemos que funciona.
+
+Antes de continuar, me he encontrado un error, los test cuando los ejecuto lo que hacen es aparte de que no pasan todos lo que hacen es crear muchos usuairos y proyectos y demas , porque claro antes usaban memoria y esta se borraba entre ejecucion y ejecucion. Lo que nos toca ahora es mdoficar los tests.
+
+Vamos a tener dos bases de datos:
+
+ - devmind_db
+
+Para usar  manualmente con la API, frontend, TablePlus, curl, etc.
+
+Y otra:
+
+ - devmind_test_db
+
+Solo para tests automáticos.
+
+
+Cada vez que ejecutes los tests:
+
+    1. Se usa devmind_test_db.
+    2. Se crean las tablas si no existen.
+    3. Se limpian users, projects y project_files antes de empezar.
+    4. Se ejecutan los tests.
+    5. Se vuelven a limpiar al terminar.
+
+
+Primer paso es crear la base de datos en el contenedor, la creamos
+
+Ahora tenemos que hacer las migraciones ( crear las tablas ) como hicimos con la otra base de datos
+
+Ahora vamos a crear un fichero global de test que lo que hace es:
+
+    1. Comprueba que DATABASE_URL apunta a devmind_test_db.
+    2. Ejecuta las migraciones por si faltara alguna tabla.
+    3. Limpia users, projects y project_files.
+    4. Ejecuta los tests.
+    5. Cuando terminan los tests, vuelve a limpiar las tablas.
+
+
+El siguiente paso será crear:
+
+ - vitest.config.ts
+
+para conectar globalSetup.ts.
+
+Y ahira en el apckage.json cambiamos el comando script de los tests por esto, para que siempre ejecute los test con la base de datos de tests:
+
+    "test": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest run",
+    "test:watch": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest"
+
+
+
+Este error ya esta solucionado y ahor apodemos seguir.
+
+
+
+3. [PostgresProjectRepository]
+
+creamos el archivo postgresProjectFileRepository.ts
+
+Hace lo mismo que tu repositorio en memoria, pero usando PostgreSQL.
+
+Antes:
+
+    InMemoryProjectFileRepository
+    ↓
+    guardaba en un array []
+
+Ahora:
+
+    PostgresProjectFileRepository
+    ↓
+    guarda en la tabla project_files
+
+Ahora vamos a crear un script pequeño para probar el repositorio y cuando funcione podemos ponerle en el container
+
+Ahora como funciona modificamos el container
+
+  

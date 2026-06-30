@@ -1,5 +1,5 @@
-import { ProjectFile } from "../../domain/entities/projectFile";
-import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
+import { ProjectFile } from "../../../domain/entities/projectFile";
+import { ProjectFileRepository } from "../../../domain/repository/projectFileRepository";
 
 export class InMemoryProjectFileRepository implements ProjectFileRepository {
   private projectFiles: ProjectFile[] = [];

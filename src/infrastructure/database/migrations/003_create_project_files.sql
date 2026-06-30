@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS project_files (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  language TEXT NOT NULL,
+  content TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

@@ -1,0 +1,554 @@
+openapi: 3.0.3
+
+info:
+  title: DevMind API
+  description: API backend para indexar proyectos software y consultarlos en lenguaje natural.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000
+    description: Servidor local de desarrollo
+
+tags:
+  - name: Health
+    description: Estado del servidor
+  - name: Auth
+    description: Registro, login y usuario autenticado
+  - name: Projects
+    description: Gestión de proyectos del usuario
+  - name: Project Files
+    description: Gestión de archivos dentro de un proyecto
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+      required:
+        - id
+        - name
+        - email
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - ownerId
+        - name
+        - createdAt
+
+    ProjectFile:
+      type: object
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        path:
+          type: string
+        language:
+          type: string
+        content:
+          type: string
+        size:
+          type: integer
+        hash:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - path
+        - language
+        - content
+        - size
+        - hash
+        - createdAt
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Comprueba que la API está en funcionamiento
+      responses:
+        "200":
+          description: API en funcionamiento
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: DevMind API
+                  message:
+                    type: string
+                    example: API is running
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Registrar un nuevo usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  example: Carlos
+                email:
+                  type: string
+                  format: email
+                  example: carlos@example.com
+                password:
+                  type: string
+                  minLength: 6
+                  example: password123
+              required:
+                - name
+                - email
+                - password
+      responses:
+        "201":
+          description: Usuario registrado correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Body inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: El email ya está registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login de usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: carlos@example.com
+                password:
+                  type: string
+                  minLength: 6
+                  example: password123
+              required:
+                - email
+                - password
+      responses:
+        "200":
+          description: Login correcto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    $ref: "#/components/schemas/User"
+        "400":
+          description: Body inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      summary: Obtener el usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Datos del usuario autenticado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Usuario no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects:
+    post:
+      tags:
+        - Projects
+      summary: Crear un proyecto
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  example: DevMind API
+                description:
+                  type: string
+                  example: Backend con IA para consultar proyectos software
+              required:
+                - name
+      responses:
+        "201":
+          description: Proyecto creado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: Body inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags:
+        - Projects
+      summary: Listar proyectos del usuario autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Lista de proyectos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects/{id}:
+    get:
+      tags:
+        - Projects
+      summary: Obtener un proyecto por ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      responses:
+        "200":
+          description: Proyecto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags:
+        - Projects
+      summary: Borrar un proyecto
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      responses:
+        "204":
+          description: Proyecto borrado correctamente
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects/{projectId}/files:
+    post:
+      tags:
+        - Project Files
+      summary: Añadir un archivo a un proyecto
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path:
+                  type: string
+                  minLength: 1
+                  example: src/app.ts
+                language:
+                  type: string
+                  minLength: 1
+                  example: typescript
+                content:
+                  type: string
+                  example: "console.log('hello');"
+              required:
+                - path
+                - language
+                - content
+      responses:
+        "201":
+          description: Archivo creado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFile"
+        "400":
+          description: Body inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags:
+        - Project Files
+      summary: Listar archivos de un proyecto
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      responses:
+        "200":
+          description: Lista de archivos del proyecto
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectFile"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects/{projectId}/files/{fileId}:
+    get:
+      tags:
+        - Project Files
+      summary: Obtener un archivo por ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: file-uuid
+      responses:
+        "200":
+          description: Archivo encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFile"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto o archivo no encontrado, o no pertenece al usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags:
+        - Project Files
+      summary: Borrar un archivo de un proyecto
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: file-uuid
+      responses:
+        "204":
+          description: Archivo borrado correctamente
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto o archivo no encontrado, o no pertenece al usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
