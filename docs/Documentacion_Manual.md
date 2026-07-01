@@ -1324,4 +1324,434 @@ test-postgres-project-repository.ts --> postgresProjectRepository.test.ts
 test-postgres-user-repository.ts --> postgresUserRepository.test.ts
 
 
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+-------------------------------------------------------------------------
+
+
+
+## . FASE 5
+
+Empezamos con la fase de subida del zip.
+
+Ahora mismo DevMind puede crear archivos de proyecto manualmente:
+
+    POST /projects/:projectId/files
+
+Pero queremos añadir una subida automática de un proyecto comprimido:
+
+    POST /projects/:projectId/upload
+
+La idea será:
+
+    Usuario autenticado
+    ↓
+    Sube un ZIP de un proyecto
+    ↓
+    DevMind comprueba que el proyecto pertenece a ese usuario
+    ↓
+    Extrae los archivos del ZIP
+    ↓
+    Ignora carpetas inútiles como node_modules, .git, dist...
+    ↓
+    Convierte cada archivo válido en ProjectFile
+    ↓
+    Guarda todos los ProjectFile en PostgreSQL
+
+
+Primera decisión importante
+
+ - No vamos a meter toda la lógica del ZIP directamente en el controller.
+
+ - Mala idea:
+
+      controller
+      ↓
+      recibe ZIP
+      ↓
+      extrae ZIP
+      ↓
+      filtra archivos
+      ↓
+      calcula hash
+      ↓
+      guarda en BD
+
+ - Eso ensucia mucho la capa HTTP.
+
+ - La idea buena será esta:
+
+    HTTP / Express
+    ↓
+    UploadProjectZipUseCase
+    ↓
+    ProjectRepository
+    ProjectFileRepository
+    ZipExtractor
+    IdGenerator
+
+ - Es decir, crearemos un caso de uso:
+
+    UploadProjectZipUseCase
+
+ - Este caso de uso será el cerebro de la operación.
+
+
+
+El Endpoint que usaremos sera
+
+    POST /projects/:projectId/upload
+
+Con multipart/form-data.
+
+El campo del archivo se llamaría:
+
+    file
+
+Ejemplo conceptual:
+
+    curl -X POST http://localhost:3000/projects/PROJECT_ID/upload \
+      -H "Authorization: Bearer ACCESS_TOKEN" \
+      -F "file=@mi-proyecto.zip"
+
+Respuesta posible:
+
+    {
+      "projectId": "project-1",
+      "filesCreated": 3,
+      "files": [
+        {
+          "id": "file-1",
+          "projectId": "project-1",
+          "path": "src/index.ts",
+          "language": "typescript",
+          "size": 120,
+          "hash": "..."
+        }
+      ]
+    }
+
+IMPORTSNTE: De momento no hace falta devolver el content completo en la respuesta, porque si el ZIP contiene muchos archivos podría ser una respuesta enorme.
+
+
+Dependencias: 
+
+Más adelante necesitaremos probablemente:
+
+    npm install multer adm-zip
+
+    O una alternativa:
+
+    npm install multer yauzl
+
+Pero todavía no las instalaría.
+
+¿Por qué?
+
+Porque el primer test será del caso de uso, y para eso no necesitamos leer un ZIP real. Podemos usar un fake:
+
+    FakeZipExtractor
+
+Así probamos la lógica sin depender todavía de multer, adm-zip ni Express.
+
+
+
+Debemos crear tambien una nuva pieza que sera un puerto llamado sipextractor, el caso de uso no deberia saber como se hace la extraccion del zip, pero si que debe tener una interfaz que defina los metodos.
+
+    La idea:
+
+    UploadProjectZipUseCase
+    ↓ usa
+    ZipExtractor
+
+
+Orden usando TDD que seguiremos aproximadamente:
+
+    1. Test unitario del caso de uso
+    2. Implementar UploadProjectZipUseCase
+    3. Añadir más tests unitarios: ignora node_modules, .git, dist...
+    4. Test HTTP con Supertest para POST /projects/:projectId/upload
+    5. Implementar endpoint con multer
+    6. Implementar extractor real de ZIP
+    7. Test final de integración con ZIP real
+
+
+1.[UploadProjectZipUseCase]
+
+Empezamos generando el test unitario, este claramente no pasara porque no hay nada implementado aun.
+
+Vamos a crear una nueva carpeta dentro de test/unit/application ya que aqui denro esta separado por carpetas por auth, project y project file y estas carpetas tienen denro los test de los casos de uso de los CRUD de cada campo , pero UploadProjectZipUseCase es otra cosa:
+
+    recibir un ZIP
+    extraer muchos archivos
+    filtrar carpetas
+    detectar lenguaje
+    calcular size/hash
+    crear muchos ProjectFile  
+
+Por ello creamos una nueva carpeta llamada uploadzip donde meteremos el test
+
+Ahora vamos a implementar.
+
+Creamos el nuevo puerto de aplicacion zipExtractor
+
+Ahora creamos el caos de uso uploadProjectZipUseCase
+
+Vamos a pasar a test especializados, Primeor vamos a modificar el fake del zip extractor para meterle algo que nso diga si ha sido llamdo o no, Esto nos permite comprobar una cosa importante:
+
+        Si el proyecto no pertenece al usuario,
+        ni siquiera debería intentar extraer el ZIP.
+
+Ahora vamos a añadir test al archivo para comprobar seguridad:
+
+ - "No se puede subir un ZIP a un proyecto que no existe o que no pertenece al usuario autenticado.
+
+   > Este test prepara este escenario:
+
+        Existe project-1
+        pero pertenece a another-user
+
+   >Luego el usuario user-1 intenta subir un ZIP a ese proyecto.
+
+        Resultado esperado:
+
+        ❌ No se permite
+        ❌ No se extrae el ZIP
+        ❌ No se guarda ningún ProjectFile
+
+    > Esta parte es muy importante para la seguridad.
+
+    >Aunque realmente el proyecto existe, para user-1 debe comportarse como si no existiera.
+
+    > Esto evita revelar información.
+
+    >No queremos decir:
+
+        403 Forbidden: este proyecto existe pero no es tuyo
+
+    > Porque eso le confirma al usuario que ese projectId existe.
+
+    >Preferimos:
+
+        404 Project not found
+
+    >O a nivel de caso de uso:
+
+        Project not found
+
+    > Este tes deberia pasar ya que el caso de uso asegura eso
+
+ - Ignorar carpetas y archivos que no queremos guardar (node_modules, .git, dist)
+
+   >Este test dice:
+
+        Si el ZIP trae 6 archivos
+        pero 5 están dentro de carpetas ignoradas
+        entonces solo se debe guardar 1 ProjectFile real
+
+   >En este caso solo debería guardarse:
+
+        src/index.ts
+
+   > Este test no pasa aun, porque en el caso de uso no tenemos nada que lo que haga es filtar las carpetas que quermos y que no, por ello, en el casod e uso metemos una funcion que haga eso y luego que pase solo las carpetas filtradas
+
+
+ - Pasar un error si el zip que se sube no tiene ningun archivo valido.
+
+   > ¿Qué pasa si el ZIP no tiene ningún archivo válido?
+   
+   >Por ejemplo, el usuario sube un ZIP que solo contiene:
+
+        node_modules/
+        .git/
+        dist/
+        coverage/
+
+   >O sube un ZIP vacío.
+   
+   >En ese caso, no tendría sentido devolver:
+
+        {
+        "filesCreated": 0,
+        "files": []
+        }
+
+   >Porque parecería que la subida ha ido bien, pero realmente DevMind no ha importado nada útil.
+   
+   >Lo más lógico sería fallar con un error tipo:
+
+        No valid project files found
+
+   >Más adelante, en el endpoint HTTP, ese error lo convertiremos en un 400 Bad Request.
+
+   > Ahora mismo seguramente fallará, porque tu caso de uso probablemente hace esto:
+
+        extrae archivos
+        ↓
+        filtra archivos ignorados
+        ↓
+        si no queda ninguno, devuelve filesCreated: 0
+
+   >Pero queremos esto:
+
+        extrae archivos
+        ↓
+        filtra archivos ignorados
+        ↓
+        si no queda ninguno, lanza error
+
+   > Añadimos en el caso de uso un apartado que lance error si no quedan archivos validos
+
+
+
+Con esto ya habriamos terminado UploadProjectZipUseCase y la logica interna
+
+        ✅ crea ProjectFile desde archivos extraídos de un ZIP
+        ✅ valida que el proyecto pertenece al usuario
+        ✅ no extrae el ZIP si el proyecto no pertenece al usuario
+        ✅ ignora carpetas innecesarias
+        ✅ falla si no hay archivos válidos
+
+
+Ahora el siguiente bloque sería pasar a la capa HTTP.
+
+
+
+2.[POST /projects/:projectId/upload]
+
+Vamos a crear el endpoint:
+
+        POST /projects/:projectId/upload
+
+Pero siguiendo TDD, primero escribiremos el test de integración con Supertest.
+
+El objetivo del primer test HTTP será:
+
+        Dado un usuario autenticado
+        Y un proyecto suyo existente
+        Cuando sube un ZIP válido a /projects/:projectId/upload
+        Entonces la API devuelve 201
+        Y crea ProjectFile en PostgreSQL
+
+
+Para el endpoint real necesitaremos dos dependencias:
+
+        npm install multer adm-zip
+
+Y probablemente los tipos de multer:
+
+        npm install -D @types/multer
+
+Para qué sirve cada una
+
+multer sirve para que Express pueda recibir archivos con multipart/form-data.
+
+Es decir, esto:
+
+        -F "file=@project.zip"
+
+adm-zip sirve para leer el contenido del ZIP en Node.js.
+
+Es decir:
+
+        Buffer del ZIP
+        ↓
+        archivos internos
+        ↓
+        src/index.ts
+        package.json
+        README.md
+
+
+Orden que haremos: 
+
+        1. Instalar multer, adm-zip y @types/multer
+        2. Crear test HTTP en rojo para POST /projects/:projectId/upload
+        3. Crear extractor real AdmZipExtractor
+        4. Crear controller/ruta HTTP
+        5. Registrar UploadProjectZipUseCase en el container
+        6. Hacer pasar el test
+
+
+EMPEZAMOS:
+
+Primero instalamos las dependencias : 
+
+        npm install multer adm-zip
+        npm install -D @types/multer @types/adm-zip
+
+multer  → para recibir el ZIP
+adm-zip → para extraer los archivos del ZIP
+
+
+Ahora empezamos creando el test del endpoint, que no pasara
+
+Este test lo que hara es crear un zip en memoria, no psarle un zip en concreto, pero nos sirve para probar el flujo.
+
+El test pasa, ahoa vamos a implementar, queremos lo siguient:
+
+        Supertest
+        ↓
+        POST /projects/:projectId/upload
+        ↓
+        multer recibe el ZIP
+        ↓
+        req.file.buffer contiene los bytes del ZIP
+        ↓
+        UploadProjectZipUseCase procesa el buffer
+        ↓
+        AdmZipExtractor extrae los archivos
+        ↓
+        se guardan ProjectFile en PostgreSQL
+        ↓
+        respuesta 201
+
+
+Primero vamos a implementar el extractor real de infraestuctura del zip : admZipExtractor que sera el extractor que reciba un zip y devuelva los archivos con el path y el contenido.
+
+Ahora vamos a registrar el caos de uso en el container para tenerlo instanciado.
+
+Una vez hecho eso lo que tenemos que hacer es modificar el project route par poider meter dependncias y conexiones para este endpoint tambien hay que mdoficar el controller para que tenga el metodo de subir el zip.
+
+Hemos tenido que corregir el test, porque el etractor de zip no asegura el orden y al coger los archivos puede venir desordenado, entonces,El test no debe depender de que src/index.ts venga antes que package.json; lo importante es que ambos archivos existan en la respuesta.
+
+Ahora vamos a modificar el test para añadir seguridad: 
+
+- Si el usuario llama al endpoint sin enviar archivo ZIP, la API debe responder 400.
+
+        Dado un usuario autenticado
+        Y un proyecto suyo
+        Cuando llama a /projects/:id/upload sin adjuntar archivo
+        Entonces la API responde 400
+
+- Un usuario NO puede subir un ZIP a un proyecto que pertenece a otro usuario.
+
+        Esto es coherente con la regla que ya tienes en DevMind:
+
+        Nunca operar solo por projectId.
+        Siempre usar projectId + ownerId.
+
+- Si el ZIP solo contiene carpetas ignoradas,la API debe devolver 400.
+
+        Porque en el caso de uso ya lo tenemos cubierto, pero ahora falta validar cómo se comporta desde HTTP.
+
+
+ - Comprobar que el endpoint ignora node_modules, .git, dist, coverage, .next...
+
+        Ya lo tenemos probado en unitario, pero estaría bien validar que el flujo real HTTP también lo respeta cuando el ZIP real contiene esos archivos.
+
+
+
+
+
+
+
+
+
   

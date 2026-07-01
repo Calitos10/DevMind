@@ -47,4 +47,22 @@ export class ProjectController {
 
     return res.status(204).send();
   }
+
+  async uploadZip(req: Request, res: Response) {
+    const authenticatedReq = req as AuthenticatedRequest;
+
+    if (!authenticatedReq.file) {
+      return res.status(400).json({
+        message: "Zip file is required",
+      });
+    }
+
+    const result = await container.uploadProjectZipUseCase.execute({
+      projectId: authenticatedReq.params.id as string,
+      ownerId: authenticatedReq.user.userId,
+      zipBuffer: authenticatedReq.file.buffer,
+    });
+
+    return res.status(201).json(result);
+  }
 }

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+#Pruba el flujo de api entero , usuarios, proyectos y archivos
+
+
+
 set -e
 
 BASE_URL="${BASE_URL:-http://localhost:3000}"

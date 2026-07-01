@@ -11,9 +11,6 @@ import { PostgresUserRepository } from "../infrastructure/repositoryAdapter/post
 //Import de Repositorio en Memoria
 //import { InMemoryUserRepository } from "../infrastructure/repositoryAdapter/inMemory/inMemoryUserRepository";
 
-
-
-
 //[IMPORTS PARA LA PARTE DE PROYECTOS]
 import { CreateProjectUseCase } from "../application/projects/createProjectUseCase";
 import { ListUserProjectsUseCase } from "../application/projects/listUserProjectsUseCase";
@@ -23,10 +20,6 @@ import { DeleteProjectUseCase } from "../application/projects/deleteProjectUseCa
 import { PostgresProjectRepository } from "../infrastructure/repositoryAdapter/postgres/postgresProjectRepository";
 //Import de repositorio en memmoria
 //import { InMemoryProjectRepository } from "../infrastructure/repositoryAdapter/inMemory/inMemoryProjectRepository";
-
-
-
-
 
 //[IMPORTS PARA LA PARTE DE ARCHIVOS]
 import { CryptoFileHashGenerator } from "../infrastructure/fileAdapter/cryptoFileHashGenerator";
@@ -39,8 +32,9 @@ import { PostgresProjectFileRepository } from "../infrastructure/repositoryAdapt
 //Import de repositorio de memoria
 //import { InMemoryProjectFileRepository } from "../infrastructure/repositoryAdapter/inMemory/inMemoryProjectFileRepository";
 
-
-
+//[IMPORTS PARA LA PARTE DE SUBIR ZIP]
+import { AdmZipExtractor } from "../infrastructure/uploadZipAdapter/admZipExtractor";
+import { UploadProjectZipUseCase } from "../application/uploadZip/uploadProjectZipUseCase";
 
 //[INSTANCIAMOS LOS REPOSITORIOS]
 
@@ -54,14 +48,12 @@ const userRepository = new PostgresUserRepository(postgresPool);
 const projectRepository = new PostgresProjectRepository(postgresPool);
 const projectFileRepository = new PostgresProjectFileRepository(postgresPool);
 
-
-
-
 //Instanciamos las implementaciones de puertos
 const passwordHasher = new BcryptPasswordHasher();
 const tokenService = new JwtTokenService();
 const idGenerator = new CryptoIdGenerator();
 const fileHashGenerator = new CryptoFileHashGenerator();
+const zipExtractor = new AdmZipExtractor();
 
 export const container = {
   userRepository,
@@ -111,6 +103,13 @@ export const container = {
   deleteProjectFileUseCase: new DeleteProjectFileUseCase(
     projectRepository,
     projectFileRepository,
+  ),
+
+  uploadProjectZipUseCase: new UploadProjectZipUseCase(
+    projectRepository,
+    projectFileRepository,
+    zipExtractor,
+    idGenerator,
   ),
 
   tokenService,

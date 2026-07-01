@@ -1,5 +1,7 @@
 #!/bin/bash
 
+#Pruba el flujo de archivos
+
 BASE_URL="http://localhost:3000"
 
 EMAIL="user-$(date +%s)@example.com"
