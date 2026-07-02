@@ -30,4 +30,15 @@ export class InMemoryProjectFileRepository implements ProjectFileRepository {
         !(projectFile.id === id && projectFile.projectId === projectId),
     );
   }
+  async update(projectFile: ProjectFile): Promise<ProjectFile> {
+    const index = this.projectFiles.findIndex(
+      (existingProjectFile) => existingProjectFile.id === projectFile.id,
+    );
+
+    if (index !== -1) {
+      this.projectFiles[index] = projectFile;
+    }
+
+    return projectFile;
+  }
 }

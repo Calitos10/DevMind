@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { postgresPool } from "../../../src/infrastructure/database/postgresPool";
+import { postgresPool } from "../../../../src/infrastructure/database/postgresPool";
 
 describe("PostgreSQL connection", () => {
   it("should connect to PostgreSQL and return the database version", async () => {

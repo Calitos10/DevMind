@@ -2,9 +2,9 @@ import { randomUUID } from "crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { postgresPool } from "../../../src/infrastructure/database/postgresPool";
-import { PostgresUserRepository } from "../../../src/infrastructure/repositoryAdapter/postgres/postgresUserRepository";
-import { PostgresProjectRepository } from "../../../src/infrastructure/repositoryAdapter/postgres/postgresProjectRepository";
+import { postgresPool } from "../../../../src/infrastructure/database/postgresPool";
+import { PostgresUserRepository } from "../../../../src/infrastructure/repositoryAdapter/postgres/postgresUserRepository";
+import { PostgresProjectRepository } from "../../../../src/infrastructure/repositoryAdapter/postgres/postgresProjectRepository";
 
 describe("PostgresProjectRepository", () => {
   it("should save, list, find and delete a project", async () => {

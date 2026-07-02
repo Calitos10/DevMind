@@ -2,8 +2,8 @@ import { randomUUID } from "crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { postgresPool } from "../../../src/infrastructure/database/postgresPool";
-import { PostgresUserRepository } from "../../../src/infrastructure/repositoryAdapter/postgres/postgresUserRepository";
+import { postgresPool } from "../../../../src/infrastructure/database/postgresPool";
+import { PostgresUserRepository } from "../../../../src/infrastructure/repositoryAdapter/postgres/postgresUserRepository";
 
 describe("PostgresUserRepository", () => {
   it("should save and find a user by email and id", async () => {
