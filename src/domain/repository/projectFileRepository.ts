@@ -8,4 +8,5 @@ export interface ProjectFileRepository {
     projectId: string,
   ): Promise<ProjectFile | null>;
   deleteByIdAndProjectId(id: string, projectId: string): Promise<void>;
+  update(projectFile: ProjectFile): Promise<ProjectFile>;
 }

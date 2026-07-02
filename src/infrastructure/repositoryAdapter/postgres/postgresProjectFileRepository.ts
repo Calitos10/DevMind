@@ -84,10 +84,7 @@ export class PostgresProjectFileRepository implements ProjectFileRepository {
     return this.toDomain(row);
   }
 
-  async deleteByIdAndProjectId(
-    id: string,
-    projectId: string,
-  ): Promise<void> {
+  async deleteByIdAndProjectId(id: string, projectId: string): Promise<void> {
     await this.pool.query(
       `
       DELETE FROM project_files
@@ -95,6 +92,53 @@ export class PostgresProjectFileRepository implements ProjectFileRepository {
       `,
       [id, projectId],
     );
+  }
+
+  async update(projectFile: ProjectFile): Promise<ProjectFile> {
+    const result = await this.pool.query(
+      `
+    UPDATE project_files
+    SET
+      path = $1,
+      language = $2,
+      content = $3,
+      size = $4,
+      hash = $5
+    WHERE id = $6
+      AND project_id = $7
+    RETURNING
+      id,
+      project_id,
+      path,
+      language,
+      content,
+      size,
+      hash,
+      created_at
+    `,
+      [
+        projectFile.path,
+        projectFile.language,
+        projectFile.content,
+        projectFile.size,
+        projectFile.hash,
+        projectFile.id,
+        projectFile.projectId,
+      ],
+    );
+
+    const row = result.rows[0];
+
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      path: row.path,
+      language: row.language,
+      content: row.content,
+      size: row.size,
+      hash: row.hash,
+      createdAt: row.created_at,
+    };
   }
 
   private toDomain(row: ProjectFileRow): ProjectFile {

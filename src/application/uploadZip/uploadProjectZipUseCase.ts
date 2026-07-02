@@ -41,9 +41,49 @@ export class UploadProjectZipUseCase {
       throw new NoValidProjectFilesFoundError();
     }
 
+    const existingProjectFiles =
+      await this.projectFileRepository.findByProjectId(input.projectId);
+
+    const existingProjectFilesByPath = new Map(
+      existingProjectFiles.map((projectFile) => [
+        projectFile.path,
+        projectFile,
+      ]),
+    );
+
     const createdFiles = [];
+    const updatedFiles = [];
+    const deletedFiles = [];
+    const unchangedFiles = [];
 
     for (const extractedFile of validFiles) {
+      const hash = createHash("sha256")
+        .update(extractedFile.content)
+        .digest("hex");
+
+      const existingProjectFile = existingProjectFilesByPath.get(
+        extractedFile.path,
+      );
+
+      if (existingProjectFile && existingProjectFile.hash === hash) {
+        unchangedFiles.push(existingProjectFile);
+        continue;
+      }
+
+      if (existingProjectFile && existingProjectFile.hash !== hash) {
+        const updatedProjectFile = await this.projectFileRepository.update({
+          ...existingProjectFile,
+          language: detectLanguageFromPath(extractedFile.path),
+          content: extractedFile.content,
+          size: Buffer.byteLength(extractedFile.content, "utf8"),
+          hash,
+        });
+
+        updatedFiles.push(updatedProjectFile);
+
+        continue;
+      }
+
       const projectFile = {
         id: this.idGenerator.generate(),
         projectId: input.projectId,
@@ -51,7 +91,7 @@ export class UploadProjectZipUseCase {
         language: detectLanguageFromPath(extractedFile.path),
         content: extractedFile.content,
         size: Buffer.byteLength(extractedFile.content, "utf8"),
-        hash: createHash("sha256").update(extractedFile.content).digest("hex"),
+        hash,
         createdAt: new Date(),
       };
 
@@ -61,10 +101,37 @@ export class UploadProjectZipUseCase {
       createdFiles.push(savedProjectFile);
     }
 
+    // crea una lista rápida de rutas que vienen en el ZIP nuevo.
+    const incomingFilePaths = new Set(
+      validFiles.map((extractedFile) => extractedFile.path),
+    );
+
+    // Por cada archivo que ya existía en BD: si su path NO está en el ZIP nuevo → borrarlo
+    for (const existingProjectFile of existingProjectFiles) {
+      if (!incomingFilePaths.has(existingProjectFile.path)) {
+        await this.projectFileRepository.deleteByIdAndProjectId(
+          existingProjectFile.id,
+          input.projectId,
+        );
+
+        deletedFiles.push(existingProjectFile);
+      }
+    }
+
     return {
       projectId: input.projectId,
-      filesCreated: createdFiles.length,
-      files: createdFiles,
+      summary: {
+        created: createdFiles.length,
+        updated: updatedFiles.length,
+        deleted: deletedFiles.length,
+        unchanged: unchangedFiles.length,
+      },
+      files: {
+        created: createdFiles,
+        updated: updatedFiles,
+        deleted: deletedFiles,
+        unchanged: unchangedFiles,
+      },
     };
   }
 }

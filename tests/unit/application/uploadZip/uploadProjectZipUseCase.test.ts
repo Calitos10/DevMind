@@ -1,12 +1,13 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { UploadProjectZipUseCase } from "../../../../src/application/uploadZip/uploadProjectZipUseCase";
-import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
-import { FakeProjectFileRepository } from "../../../fakes/fakeProjectFileRepository";
 import {
-  ZipExtractor,
   ExtractedProjectFile,
+  ZipExtractor,
 } from "../../../../src/application/ports/zipExtractor";
+import { FakeProjectFileRepository } from "../../../fakes/fakeProjectFileRepository";
+import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
 
 class FakeZipExtractor implements ZipExtractor {
   public wasCalled = false;
@@ -38,12 +39,16 @@ class FakeSequentialIdGenerator {
   }
 }
 
+function calculateHash(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
 describe("UploadProjectZipUseCase", () => {
   it("creates project files from an uploaded zip", async () => {
     const projectRepository = new FakeProjectRepository();
     const projectFileRepository = new FakeProjectFileRepository();
 
-    projectRepository.save({
+    await projectRepository.save({
       id: "project-1",
       ownerId: "user-1",
       name: "My project",
@@ -78,10 +83,20 @@ describe("UploadProjectZipUseCase", () => {
     });
 
     expect(result.projectId).toBe("project-1");
-    expect(result.filesCreated).toBe(2);
-    expect(result.files).toHaveLength(2);
 
-    expect(result.files[0]).toMatchObject({
+    expect(result.summary).toMatchObject({
+      created: 2,
+      updated: 0,
+      deleted: 0,
+      unchanged: 0,
+    });
+
+    expect(result.files.created).toHaveLength(2);
+    expect(result.files.updated).toHaveLength(0);
+    expect(result.files.deleted).toHaveLength(0);
+    expect(result.files.unchanged).toHaveLength(0);
+
+    expect(result.files.created[0]).toMatchObject({
       id: "file-1",
       projectId: "project-1",
       path: "src/index.ts",
@@ -90,9 +105,9 @@ describe("UploadProjectZipUseCase", () => {
       size: Buffer.byteLength("console.log('hello');", "utf8"),
     });
 
-    expect(result.files[0].hash).toEqual(expect.any(String));
+    expect(result.files.created[0].hash).toEqual(expect.any(String));
 
-    expect(result.files[1]).toMatchObject({
+    expect(result.files.created[1]).toMatchObject({
       id: "file-2",
       projectId: "project-1",
       path: "package.json",
@@ -101,14 +116,14 @@ describe("UploadProjectZipUseCase", () => {
       size: Buffer.byteLength('{"name":"devmind-test"}', "utf8"),
     });
 
-    expect(result.files[1].hash).toEqual(expect.any(String));
+    expect(result.files.created[1].hash).toEqual(expect.any(String));
   });
 
   it("does not upload files when the project does not belong to the user", async () => {
     const projectRepository = new FakeProjectRepository();
     const projectFileRepository = new FakeProjectFileRepository();
 
-    projectRepository.save({
+    await projectRepository.save({
       id: "project-1",
       ownerId: "another-user",
       name: "Another user project",
@@ -148,7 +163,7 @@ describe("UploadProjectZipUseCase", () => {
     const projectRepository = new FakeProjectRepository();
     const projectFileRepository = new FakeProjectFileRepository();
 
-    projectRepository.save({
+    await projectRepository.save({
       id: "project-1",
       ownerId: "user-1",
       name: "My project",
@@ -205,10 +220,21 @@ describe("UploadProjectZipUseCase", () => {
       zipBuffer: Buffer.from("fake zip content"),
     });
 
-    expect(result.filesCreated).toBe(1);
-    expect(result.files).toHaveLength(1);
+    expect(result.projectId).toBe("project-1");
 
-    expect(result.files[0]).toMatchObject({
+    expect(result.summary).toMatchObject({
+      created: 1,
+      updated: 0,
+      deleted: 0,
+      unchanged: 0,
+    });
+
+    expect(result.files.created).toHaveLength(1);
+    expect(result.files.updated).toHaveLength(0);
+    expect(result.files.deleted).toHaveLength(0);
+    expect(result.files.unchanged).toHaveLength(0);
+
+    expect(result.files.created[0]).toMatchObject({
       id: "file-1",
       projectId: "project-1",
       path: "src/index.ts",
@@ -223,7 +249,7 @@ describe("UploadProjectZipUseCase", () => {
     const projectRepository = new FakeProjectRepository();
     const projectFileRepository = new FakeProjectFileRepository();
 
-    projectRepository.projects.push({
+    await projectRepository.save({
       id: "project-1",
       ownerId: "user-1",
       name: "My project",
@@ -264,5 +290,273 @@ describe("UploadProjectZipUseCase", () => {
     ).rejects.toThrow("No valid project files found");
 
     expect(projectFileRepository.projectFiles).toHaveLength(0);
+  });
+
+  it("does not duplicate unchanged files when uploading the same zip again", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const existingContent = "console.log('hello');";
+
+    await projectFileRepository.save({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: existingContent,
+      size: Buffer.byteLength(existingContent, "utf8"),
+      hash: calculateHash(existingContent),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: existingContent,
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
+
+    const useCase = new UploadProjectZipUseCase(
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+    );
+
+    const result = await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(result.projectId).toBe("project-1");
+
+    expect(result.summary).toMatchObject({
+      created: 0,
+      updated: 0,
+      deleted: 0,
+      unchanged: 1,
+    });
+
+    expect(result.files.created).toHaveLength(0);
+    expect(result.files.updated).toHaveLength(0);
+    expect(result.files.deleted).toHaveLength(0);
+    expect(result.files.unchanged).toHaveLength(1);
+
+    expect(result.files.unchanged[0]).toMatchObject({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      content: existingContent,
+      hash: calculateHash(existingContent),
+    });
+
+    expect(projectFileRepository.projectFiles).toHaveLength(1);
+
+    expect(projectFileRepository.projectFiles[0]).toMatchObject({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      content: existingContent,
+      hash: calculateHash(existingContent),
+    });
+  });
+
+  it("updates an existing project file when the path is the same but content has changed", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const oldContent = "console.log('old');";
+    const newContent = "console.log('new');";
+
+    await projectFileRepository.save({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: oldContent,
+      size: Buffer.byteLength(oldContent, "utf8"),
+      hash: calculateHash(oldContent),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: newContent,
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
+
+    const useCase = new UploadProjectZipUseCase(
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+    );
+
+    const result = await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(result.projectId).toBe("project-1");
+
+    expect(result.summary).toMatchObject({
+      created: 0,
+      updated: 1,
+      deleted: 0,
+      unchanged: 0,
+    });
+
+    expect(result.files.created).toHaveLength(0);
+    expect(result.files.updated).toHaveLength(1);
+    expect(result.files.deleted).toHaveLength(0);
+    expect(result.files.unchanged).toHaveLength(0);
+
+    expect(result.files.updated[0]).toMatchObject({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: newContent,
+      size: Buffer.byteLength(newContent, "utf8"),
+      hash: calculateHash(newContent),
+    });
+
+    expect(projectFileRepository.projectFiles).toHaveLength(1);
+
+    expect(projectFileRepository.projectFiles[0]).toMatchObject({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: newContent,
+      size: Buffer.byteLength(newContent, "utf8"),
+      hash: calculateHash(newContent),
+    });
+  });
+
+  it("deletes project files that are not present in the uploaded zip anymore", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const indexContent = "console.log('index');";
+    const oldContent = "console.log('old file');";
+
+    await projectFileRepository.save({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: indexContent,
+      size: Buffer.byteLength(indexContent, "utf8"),
+      hash: calculateHash(indexContent),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    await projectFileRepository.save({
+      id: "existing-file-2",
+      projectId: "project-1",
+      path: "src/old.ts",
+      language: "typescript",
+      content: oldContent,
+      size: Buffer.byteLength(oldContent, "utf8"),
+      hash: calculateHash(oldContent),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: indexContent,
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
+
+    const useCase = new UploadProjectZipUseCase(
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+    );
+
+    const result = await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(result.projectId).toBe("project-1");
+
+    expect(result.summary).toMatchObject({
+      created: 0,
+      updated: 0,
+      deleted: 1,
+      unchanged: 1,
+    });
+
+    expect(result.files.created).toHaveLength(0);
+    expect(result.files.updated).toHaveLength(0);
+    expect(result.files.deleted).toHaveLength(1);
+    expect(result.files.unchanged).toHaveLength(1);
+
+    expect(result.files.deleted[0]).toMatchObject({
+      id: "existing-file-2",
+      projectId: "project-1",
+      path: "src/old.ts",
+      content: oldContent,
+    });
+
+    expect(result.files.unchanged[0]).toMatchObject({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      content: indexContent,
+    });
+
+    expect(projectFileRepository.projectFiles).toHaveLength(1);
+
+    expect(projectFileRepository.projectFiles[0]).toMatchObject({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      content: indexContent,
+    });
+
+    expect(
+      projectFileRepository.projectFiles.find(
+        (projectFile) => projectFile.path === "src/old.ts",
+      ),
+    ).toBeUndefined();
   });
 });

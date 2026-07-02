@@ -33,4 +33,15 @@ export class FakeProjectFileRepository implements ProjectFileRepository {
         !(projectFile.id === id && projectFile.projectId === projectId),
     );
   }
+
+  async update(projectFile: ProjectFile): Promise<ProjectFile> {
+    this.projectFiles = this.projectFiles.map((currentProjectFile) =>
+      currentProjectFile.id === projectFile.id &&
+      currentProjectFile.projectId === projectFile.projectId
+        ? projectFile
+        : currentProjectFile,
+    );
+
+    return projectFile;
+  }
 }

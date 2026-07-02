@@ -1748,7 +1748,396 @@ Ahora vamos a modificar el test para añadir seguridad:
 
 
 
+## . FASE 5.1
 
+Ahora mismo, si subes el mismo ZIP dos veces al mismo proyecto, la API puede crear archivos duplicados.
+
+Vamos a crear un sistema de sincronizacion mediante path y hash.
+
+La sincronización sirve para que DevMind mantenga el proyecto actualizado, no duplicado.
+
+La idea será:
+
+        Subo ZIP nuevo
+        ↓
+        Comparo sus archivos con los que ya hay en PostgreSQL
+        ↓
+        Creo los nuevos
+        Actualizo los modificados
+        Borro los que ya no existen
+        No toco los que siguen igual
+
+Usaremos:
+
+        path → para saber si es el mismo archivo
+        hash → para saber si cambió el contenido
+
+
+Ejemplo:
+
+        src/index.ts existe y hash igual      → unchanged
+        src/app.ts existe y hash distinto     → updated
+        src/new.ts no existía                 → created
+        src/old.ts ya no viene en el ZIP      → deleted
+
+Esto será muy útil para el futuro RAG porque, cuando tengamos chunks y embeddings, podremos hacer esto:
+
+        archivo igual      → no regenerar chunks/embeddings
+        archivo cambiado   → regenerar solo ese archivo
+        archivo nuevo      → generar chunks/embeddings
+        archivo eliminado  → borrar sus chunks/embeddings
+
+Así DevMind será más eficiente y más realista.
+
+
+¿Que pasa si el usuario mueve un archivo entre carpetas?
+
+Este caso es importante.
+
+Antes:
+
+        src/services/userService.ts
+        hash: abc
+
+Después:
+
+        src/users/userService.ts
+        hash: abc
+
+El contenido es el mismo, pero el path ha cambiado.
+
+Con una sincronización simple por path, DevMind lo verá así:
+
+        src/services/userService.ts → deleted
+        src/users/userService.ts    → created
+
+Aunque el hash sea igual.
+
+Para una primera versión está bien, porque el resultado final será correcto:
+
+        La BD tendrá el archivo en su nueva ruta.
+        La BD ya no tendrá el archivo en su ruta antigua.
+
+Para RAG, eso es suficiente.
+
+
+
+
+
+
+[EMPEZAMOS A IMPLEMENTAR:]
+
+Vamos a modificar el comportamiento actual de UploadProjectZipUseCase.
+
+Antes hacía:
+
+        extraer ZIP
+        ↓
+        filtrar archivos ignorados
+        ↓
+        crear todos los ProjectFile
+
+Ahora queremos que haga:
+
+        extraer ZIP
+        ↓
+        filtrar archivos ignorados
+        ↓
+        calcular hash
+        ↓
+        leer ProjectFiles actuales del proyecto
+        ↓
+        comparar por path
+        ↓
+        crear / actualizar / borrar / dejar igual
+        ↓
+        devolver resumen
+
+Ahora seguramente devuelves algo como:
+
+        {
+        "projectId": "project-1",
+        "filesCreated": 18,
+        "files": [...]
+        }
+
+Con sincronización queremos evolucionarlo a algo así:
+
+        {
+        "projectId": "project-1",
+        "summary": {
+            "created": 2,
+            "updated": 1,
+            "deleted": 1,
+            "unchanged": 14
+        },
+        "files": {
+            "created": [],
+            "updated": [],
+            "deleted": [],
+            "unchanged": []
+        }
+        }
+
+
+Como siempre seguimos la metodlogia TDD.
+
+Vamos a empezar por el caso de uso, no por el endpoint.
+
+Primero haremos tests unitarios para estos comportamientos:
+
+        1. Si subo el mismo ZIP dos veces, no duplica archivos
+        2. Si un archivo tiene mismo path pero distinto contenido, lo actualiza
+        3. Si un archivo existía antes pero ya no viene en el ZIP, lo borra
+        4. Si aparece un archivo nuevo, lo crea
+
+Vamos a empezar con el test.
+
+Una pieza importante que tenemos que cambiar es el ProjectFileRepository. Para poder sincronizar necesitamos que el repositorio pueda actualizar archivos existentes. Por ello tenemos que añadirle tanto al puerto como a la implementacion un metodo como:
+
+        update(projectFile: ProjectFile): Promise<ProjectFile>;
+
+Pero siguiendo TDD, no vamos a implementarlo todavía en PostgreSQL hasta que un test nos lo pida.
+
+Primero empezamos por el test unitario del caso de uso, usando el FakeProjectFileRepository.
+
+
+1. [Test no duplicar archivo unchanged]
+
+En el test unitario del caso de uso que tenemos de UploadProjectZipUseCase vamos a añadir un nuevo test. Antes de esribirlo vamos a modificar lo que va a devolver el caso de uso que ahora sera :
+
+        {
+                "projectId": "project-1",
+                "summary": {
+                    "created": 2,
+                    "updated": 1,
+                    "deleted": 1,
+                    "unchanged": 14
+                },
+                "files": {
+                    "created": [],
+                    "updated": [],
+                    "deleted": [],
+                    "unchanged": []
+                }
+                }
+        
+Esto causara error en otros test asique hay que adaptarlos.
+
+Pero primeo empezamos con el test, que falle y ya iremos modificando todo.
+
+Creamos el test unitario.
+
+Primero evitamos duplicados manteniendo la respuesta actual. Luego ya evolucionaremos la respuesta cuando toque.
+
+Es decir, por ahora mantenemos el contrato actual del caso de uso:
+
+        {
+        projectId,
+        filesCreated,
+        files
+        }
+
+Pero cambiaremos su comportamiento:
+
+        Si el archivo no existía → lo crea
+        Si el archivo ya existía con mismo path y mismo hash → no lo crea otra vez
+
+Este test simula esto:
+
+        Ya existe en BD:
+        src/index.ts
+        content: console.log('hello');
+        hash: X
+
+        El ZIP nuevo trae:
+        src/index.ts
+        content: console.log('hello');
+        hash: X
+
+        Resultado:
+        No crear otro ProjectFile.
+
+Es decir:
+
+        Antes había 1 archivo.
+        Después debe seguir habiendo 1 archivo.
+
+Y además:
+
+        filesCreated = 0
+        files = []
+
+Porque no se ha creado nada nuevo.
+
+Genial, el test falla , eso es porque le caso de uso siempre crear archivos si son validos, no comprueba tendra 2 archivos iguales y el test solo esperaba uno.
+
+Ahora vamos a implementar en el caso de uso:
+
+    1. Cargar los ProjectFile actuales del proyecto.
+    2. Crear un Map por path.
+    3. Para cada archivo del ZIP:
+    - si no existe el path → crear
+    - si existe y el hash es igual → no hacer nada
+
+Lo que hemos añadido es:
+
+ - Carga los archivos actuales del proyecto  los organiza por path y evita duplicados
+
+Con estoel nuevo test pasara y los test antiguos debene pasar tambien ya que hemos mantenido aun la respuesta antigua.
+
+Con esto ya tendcriamos el primer paso:
+
+        Si el ZIP trae un archivo que ya existe
+        y el hash es igual
+        → no se duplica
+
+El siguiente paso seria:
+
+        Mismo path
+        pero contenido distinto
+        → No crear otro archivo.
+          actualizar el ProjectFile existente
+
+Primero como siempre creamos el test
+
+El test falla porque ahora mismo el caso de uso hace :
+
+        mismo path + hash distinto
+        → crea otro ProjectFile nuevo
+
+
+Vamos a implementar para que el test pase.
+
+Añadimos un metodo update al puerto del repositorio
+
+Añadimos el metodo update a la implementacion real de infraestrcutura ( postgresql)
+
+Añadimos el metodo update al fake del repositorio en los test
+
+Y ahora tenemos que modificar el caso de uso ya que el problema es que si existe el mismo path pero cambia el hash, ahora mismo llega al bloque de crear archivo nuevo.
+
+Hay que meter un caso intermedio:
+
+    si existe y hash igual → no hacer nada
+    si existe y hash distinto → actualizar
+    si no existe → crear
+
+Lo añadimos y Con esto ya tenemos:
+
+        Archivo no existe en BD
+        → save()
+        → se crea nuevo ProjectFile
+
+        Archivo existe y hash igual
+        → continue
+        → no se duplica
+
+        Archivo existe y hash distinto
+        → update()
+        → se actualiza el ProjectFile existente
+
+
+Ya estaria, Ahora el comportamiento del caso de uso es más inteligente:
+
+        Subes ZIP
+        ↓
+        Extrae archivos
+        ↓
+        Filtra carpetas ignoradas
+        ↓
+        Para cada archivo:
+        - si no existe ese path → crea ProjectFile
+        - si existe y hash igual → no hace nada
+        - si existe y hash distinto → actualiza ProjectFile
+
+Todavía mantenemos la respuesta antigua:
+
+        {
+        projectId,
+        filesCreated,
+        files
+        }
+
+Y eso está bien por ahora. No hemos cambiado el contrato del endpoint todavía
+
+Ahora hay que ponerse a implementar el siguiente comportamien:
+
+        Archivo existía en BD
+        pero ya no viene en el ZIP nuevo
+        → se elimina
+
+Nos ponemos a crear como siempre el test
+
+El test no pasa como esperabamos. Ahora toca implementar el caso de uso:
+
+        Si un ProjectFile existe en BD
+        pero su path no aparece en el ZIP nuevo
+        → borrarlo
+
+No vamos a cambiar todavía la respuesta del caso de uso. Seguimos manteniendo:
+
+        {
+        projectId,
+        filesCreated,
+        files
+        }
+
+
+Con esto ya ,  a nivel caso de uso ya tenemos implementada la sincronización básica por path + hash.
+
+Ahora UploadProjectZipUseCase hace esto:
+
+    Archivo nuevo
+    → se crea
+
+    Archivo existente + mismo hash
+    → no se duplica
+
+    Archivo existente + hash distinto
+    → se actualiza
+
+    Archivo existente en BD pero ausente en el ZIP nuevo
+    → se elimina
+
+Ahora mismo, la respuesta que da el caso de uso sigue siendo
+
+    {
+    projectId,
+    filesCreated,
+    files
+    }
+
+esto no esta del todo bien porque a no cuenta toda la verdad, porque ahora también puede haber archivos actualizados o eliminados.
+
+Esto lo cambiaremos ahora despues , pero primero Vamos a comprobar la sincronización desde la API real, pero sin cambiar todavía la respuesta.
+
+Vamos con los test de los endpoint.
+
+Con esto ya tenemos comprobada la sincronización en dos niveles:
+
+        1. Test unitario del caso de uso
+        2. Test de integración HTTP con PostgreSQL real de test
+
+Ahora DevMind ya hace esto correctamente:
+
+        Primer ZIP:
+        src/index.ts
+        src/app.ts
+        src/old.ts
+
+        Segundo ZIP:
+        src/index.ts    igual
+        src/app.ts      cambiado
+        src/new.ts      nuevo
+
+Ahora nos ponemos con la parte de la respuesta, para que devuelva todo.
+
+Primero hay que cambiar el primer test unitario para que sea con la respuesta nueva
+
+Este test fallara poraue result.summary todavía no existe. Vamos a implementarlo, tenemos que modificar el caso de uso buscando cada rama para aue devuelva la parte del summary correspondiente y el return.
+
+Ahora este test pasar , pero el resto no porque aun sigue con el anterior resulatdo.
 
 
 

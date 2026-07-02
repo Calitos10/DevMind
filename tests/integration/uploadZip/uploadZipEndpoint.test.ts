@@ -29,7 +29,6 @@ describe("POST /projects/:projectId/upload", () => {
 
     const projectId = createProjectResponse.body.id;
 
-    // Aquí estamos creando un ZIP real, pero sin tener que tener un archivo .zip físico en el proyecto.
     const zip = new AdmZip();
 
     zip.addFile(
@@ -56,12 +55,20 @@ describe("POST /projects/:projectId/upload", () => {
 
     expect(uploadResponse.body).toMatchObject({
       projectId,
-      filesCreated: 2,
+      summary: {
+        created: 2,
+        updated: 0,
+        deleted: 0,
+        unchanged: 0,
+      },
     });
 
-    expect(uploadResponse.body.files).toHaveLength(2);
+    expect(uploadResponse.body.files.created).toHaveLength(2);
+    expect(uploadResponse.body.files.updated).toHaveLength(0);
+    expect(uploadResponse.body.files.deleted).toHaveLength(0);
+    expect(uploadResponse.body.files.unchanged).toHaveLength(0);
 
-    const uploadedFiles = uploadResponse.body.files;
+    const uploadedFiles = uploadResponse.body.files.created;
 
     const indexFile = uploadedFiles.find(
       (file: { path: string }) => file.path === "src/index.ts",
@@ -309,12 +316,20 @@ describe("POST /projects/:projectId/upload", () => {
 
     expect(uploadResponse.body).toMatchObject({
       projectId,
-      filesCreated: 1,
+      summary: {
+        created: 1,
+        updated: 0,
+        deleted: 0,
+        unchanged: 0,
+      },
     });
 
-    expect(uploadResponse.body.files).toHaveLength(1);
+    expect(uploadResponse.body.files.created).toHaveLength(1);
+    expect(uploadResponse.body.files.updated).toHaveLength(0);
+    expect(uploadResponse.body.files.deleted).toHaveLength(0);
+    expect(uploadResponse.body.files.unchanged).toHaveLength(0);
 
-    expect(uploadResponse.body.files[0]).toMatchObject({
+    expect(uploadResponse.body.files.created[0]).toMatchObject({
       projectId,
       path: "src/index.ts",
       language: "typescript",
@@ -335,5 +350,189 @@ describe("POST /projects/:projectId/upload", () => {
       language: "typescript",
       content: "console.log('valid file');",
     });
+  });
+
+  it("synchronizes project files when uploading an updated zip", async () => {
+    await request(app).post("/auth/register").send({
+      name: "Carlos",
+      email: "upload-sync@example.com",
+      password: "password123",
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email: "upload-sync@example.com",
+      password: "password123",
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "Project sync test",
+        description: "Testing ZIP synchronization",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const firstZip = new AdmZip();
+
+    firstZip.addFile(
+      "src/index.ts",
+      Buffer.from("console.log('index v1');", "utf8"),
+    );
+
+    firstZip.addFile(
+      "src/app.ts",
+      Buffer.from("export const app = 'v1';", "utf8"),
+    );
+
+    firstZip.addFile(
+      "src/old.ts",
+      Buffer.from("console.log('old file');", "utf8"),
+    );
+
+    const firstUploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", firstZip.toBuffer(), {
+        filename: "project-v1.zip",
+        contentType: "application/zip",
+      });
+
+    expect(firstUploadResponse.status).toBe(201);
+
+    expect(firstUploadResponse.body).toMatchObject({
+      projectId,
+      summary: {
+        created: 3,
+        updated: 0,
+        deleted: 0,
+        unchanged: 0,
+      },
+    });
+
+    expect(firstUploadResponse.body.files.created).toHaveLength(3);
+    expect(firstUploadResponse.body.files.updated).toHaveLength(0);
+    expect(firstUploadResponse.body.files.deleted).toHaveLength(0);
+    expect(firstUploadResponse.body.files.unchanged).toHaveLength(0);
+
+    const secondZip = new AdmZip();
+
+    secondZip.addFile(
+      "src/index.ts",
+      Buffer.from("console.log('index v1');", "utf8"),
+    );
+
+    secondZip.addFile(
+      "src/app.ts",
+      Buffer.from("export const app = 'v2';", "utf8"),
+    );
+
+    secondZip.addFile(
+      "src/new.ts",
+      Buffer.from("console.log('new file');", "utf8"),
+    );
+
+    const secondUploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", secondZip.toBuffer(), {
+        filename: "project-v2.zip",
+        contentType: "application/zip",
+      });
+
+    expect(secondUploadResponse.status).toBe(201);
+
+    expect(secondUploadResponse.body).toMatchObject({
+      projectId,
+      summary: {
+        created: 1,
+        updated: 1,
+        deleted: 1,
+        unchanged: 1,
+      },
+    });
+
+    expect(secondUploadResponse.body.files.created).toHaveLength(1);
+    expect(secondUploadResponse.body.files.updated).toHaveLength(1);
+    expect(secondUploadResponse.body.files.deleted).toHaveLength(1);
+    expect(secondUploadResponse.body.files.unchanged).toHaveLength(1);
+
+    expect(secondUploadResponse.body.files.created[0]).toMatchObject({
+      projectId,
+      path: "src/new.ts",
+      language: "typescript",
+      content: "console.log('new file');",
+      size: Buffer.byteLength("console.log('new file');", "utf8"),
+    });
+
+    expect(secondUploadResponse.body.files.updated[0]).toMatchObject({
+      projectId,
+      path: "src/app.ts",
+      language: "typescript",
+      content: "export const app = 'v2';",
+      size: Buffer.byteLength("export const app = 'v2';", "utf8"),
+    });
+
+    expect(secondUploadResponse.body.files.deleted[0]).toMatchObject({
+      projectId,
+      path: "src/old.ts",
+      language: "typescript",
+      content: "console.log('old file');",
+    });
+
+    expect(secondUploadResponse.body.files.unchanged[0]).toMatchObject({
+      projectId,
+      path: "src/index.ts",
+      language: "typescript",
+      content: "console.log('index v1');",
+    });
+
+    const listFilesResponse = await request(app)
+      .get(`/projects/${projectId}/files`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(listFilesResponse.status).toBe(200);
+    expect(listFilesResponse.body).toHaveLength(3);
+
+    const projectFiles = listFilesResponse.body;
+
+    const indexFile = projectFiles.find(
+      (file: { path: string }) => file.path === "src/index.ts",
+    );
+
+    const appFile = projectFiles.find(
+      (file: { path: string }) => file.path === "src/app.ts",
+    );
+
+    const newFile = projectFiles.find(
+      (file: { path: string }) => file.path === "src/new.ts",
+    );
+
+    const oldFile = projectFiles.find(
+      (file: { path: string }) => file.path === "src/old.ts",
+    );
+
+    expect(indexFile).toMatchObject({
+      projectId,
+      path: "src/index.ts",
+      content: "console.log('index v1');",
+    });
+
+    expect(appFile).toMatchObject({
+      projectId,
+      path: "src/app.ts",
+      content: "export const app = 'v2';",
+    });
+
+    expect(newFile).toMatchObject({
+      projectId,
+      path: "src/new.ts",
+      content: "console.log('new file');",
+    });
+
+    expect(oldFile).toBeUndefined();
   });
 });
