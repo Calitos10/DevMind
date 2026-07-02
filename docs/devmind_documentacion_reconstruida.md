@@ -1599,7 +1599,7 @@ Conversión de scripts manuales a tests de integración:
 
 ---
 
-# 31. Estado final documentado hasta ahora
+## 31. Estado final documentado hasta ahora
 
 Hasta este punto, la documentación recoge el desarrollo de DevMind desde el setup inicial hasta la persistencia en PostgreSQL.
 
@@ -1625,7 +1625,7 @@ El sistema queda preparado para continuar con las siguientes fases del roadmap:
 - Modo invitado.
 - Onboarding visual o presentación final.
 
-## Resumen final de las fases realizadas
+# Resumen final de las fases realizadas
 
 Durante el desarrollo de DevMind API se ha construido progresivamente una API backend profesional siguiendo una estructura limpia y organizada. El objetivo principal del proyecto ha sido crear una herramienta que permita a usuarios autenticados crear proyectos software, guardar sus archivos y, más adelante, poder consultar ese código mediante inteligencia artificial.
 
@@ -1801,7 +1801,7 @@ El sistema permite:
 
 En resumen, en estas fases se ha pasado de tener un proyecto vacío a tener una API backend estructurada, testeada, autenticada, conectada a base de datos y preparada para continuar con las siguientes fases: subida de ZIP, actualización de proyectos, generación de chunks, embeddings, búsqueda semántica e integración con IA/RAG.
 
-## Fase 5 — Subida de ZIP
+# Fase 5 — Subida de ZIP
 
 ### Objetivo de la fase
 
@@ -2441,3 +2441,554 @@ User
 Pero ahora los `ProjectFile` ya no tienen que crearse solo manualmente uno a uno. También pueden generarse automáticamente a partir de un ZIP subido por el usuario.
 
 Esta fase deja preparado el proyecto para continuar con funcionalidades más avanzadas, como la resubida o actualización de proyectos, el troceado de archivos en chunks y las fases posteriores de búsqueda semántica e IA/RAG.
+
+
+## Fase 5.1 — Sincronización de archivos por path y hash
+
+### Objetivo de la subfase
+
+En esta subfase se ha mejorado el comportamiento de la subida de ZIP.
+
+Hasta ahora, DevMind ya permitía subir un ZIP a un proyecto mediante:
+
+```txt
+POST /projects/:projectId/upload
+```
+
+El problema era que, si el usuario subía el mismo ZIP dos veces al mismo proyecto, la API podía crear archivos duplicados.
+
+Para solucionarlo, se ha empezado a implementar un sistema de sincronización basado en `path` y `hash`.
+
+La idea de esta sincronización es que DevMind mantenga el proyecto actualizado, no duplicado.
+
+El flujo general pasa a ser:
+
+```txt
+Subo ZIP nuevo
+↓
+Comparo sus archivos con los que ya hay en PostgreSQL
+↓
+Creo los nuevos
+Actualizo los modificados
+Borro los que ya no existen
+No toco los que siguen igual
+```
+
+Para conseguir esto se usan dos datos importantes:
+
+```txt
+path → sirve para saber si es el mismo archivo
+hash → sirve para saber si cambió el contenido
+```
+
+Ejemplo de comportamiento esperado:
+
+```txt
+src/index.ts existe y hash igual      → unchanged
+src/app.ts existe y hash distinto     → updated
+src/new.ts no existía                 → created
+src/old.ts ya no viene en el ZIP      → deleted
+```
+
+Esta mejora será muy útil para fases futuras de RAG, porque permitirá evitar trabajo innecesario.
+
+Más adelante, cuando existan chunks y embeddings, se podrá actuar así:
+
+```txt
+archivo igual      → no regenerar chunks/embeddings
+archivo cambiado   → regenerar solo ese archivo
+archivo nuevo      → generar chunks/embeddings
+archivo eliminado  → borrar sus chunks/embeddings
+```
+
+De esta forma, DevMind será más eficiente y más realista.
+
+---
+
+### Caso especial: archivos movidos entre carpetas
+
+Durante esta subfase también se ha tenido en cuenta qué ocurre si un usuario mueve un archivo de una carpeta a otra.
+
+Por ejemplo:
+
+```txt
+Antes:
+
+src/services/userService.ts
+hash: abc
+```
+
+```txt
+Después:
+
+src/users/userService.ts
+hash: abc
+```
+
+En este caso, el contenido es el mismo, porque el hash no cambia, pero el `path` sí cambia.
+
+Con una sincronización simple por `path`, DevMind interpreta esto así:
+
+```txt
+src/services/userService.ts → deleted
+src/users/userService.ts    → created
+```
+
+Aunque el hash sea igual, al cambiar el path se considera que el archivo antiguo ha desaparecido y que ha aparecido un archivo nuevo.
+
+Para una primera versión, este comportamiento es válido, porque el resultado final en la base de datos es correcto:
+
+```txt
+La BD tendrá el archivo en su nueva ruta.
+La BD ya no tendrá el archivo en su ruta antigua.
+```
+
+Para el futuro sistema RAG, este enfoque es suficiente.
+
+---
+
+### Cambio de comportamiento en UploadProjectZipUseCase
+
+La subfase se ha centrado principalmente en modificar el comportamiento de:
+
+```txt
+UploadProjectZipUseCase
+```
+
+Antes, el caso de uso hacía esto:
+
+```txt
+extraer ZIP
+↓
+filtrar archivos ignorados
+↓
+crear todos los ProjectFile
+```
+
+Con la sincronización, el flujo debe evolucionar a esto:
+
+```txt
+extraer ZIP
+↓
+filtrar archivos ignorados
+↓
+calcular hash
+↓
+leer ProjectFiles actuales del proyecto
+↓
+comparar por path
+↓
+crear / actualizar / borrar / dejar igual
+↓
+devolver resumen
+```
+
+Antes, la respuesta era algo parecido a:
+
+```json
+{
+  "projectId": "project-1",
+  "filesCreated": 18,
+  "files": []
+}
+```
+
+Pero con la sincronización se quiere evolucionar hacia una respuesta más completa:
+
+```json
+{
+  "projectId": "project-1",
+  "summary": {
+    "created": 2,
+    "updated": 1,
+    "deleted": 1,
+    "unchanged": 14
+  },
+  "files": {
+    "created": [],
+    "updated": [],
+    "deleted": [],
+    "unchanged": []
+  }
+}
+```
+
+Esta nueva respuesta refleja mejor lo que ocurre realmente durante la subida del ZIP, porque ahora ya no solo se crean archivos. También puede haber archivos actualizados, eliminados o sin cambios.
+
+---
+
+##3 Metodología seguida
+
+Como en las fases anteriores, se ha seguido una metodología basada en TDD.
+
+En vez de empezar modificando directamente el endpoint, se ha empezado por el caso de uso.
+
+Primero se han planteado tests unitarios para estos comportamientos:
+
+```txt
+1. Si subo el mismo ZIP dos veces, no duplica archivos.
+2. Si un archivo tiene el mismo path pero distinto contenido, lo actualiza.
+3. Si un archivo existía antes pero ya no viene en el ZIP, lo borra.
+4. Si aparece un archivo nuevo, lo crea.
+```
+
+La idea ha sido validar primero la lógica interna de sincronización y después comprobarla desde la API real mediante tests de integración HTTP.
+
+---
+
+### Cambios necesarios en ProjectFileRepository
+
+Para poder sincronizar archivos, el repositorio de `ProjectFile` necesitaba una nueva capacidad: actualizar archivos existentes.
+
+Por eso se planteó añadir un método al puerto del repositorio:
+
+```ts
+update(projectFile: ProjectFile): Promise<ProjectFile>;
+```
+
+Este método permite actualizar un archivo existente cuando el path es el mismo, pero el contenido ha cambiado y, por tanto, el hash también es distinto.
+
+Siguiendo TDD, este método no se implementa en PostgreSQL hasta que un test lo pide.
+
+Primero se trabaja con el repositorio fake usado en los tests unitarios.
+
+---
+
+### 1. Test: no duplicar archivo sin cambios
+
+El primer comportamiento implementado fue evitar duplicados cuando se sube un ZIP con archivos que ya existen y no han cambiado.
+
+El caso probado fue:
+
+```txt
+Ya existe en BD:
+
+src/index.ts
+content: console.log('hello');
+hash: X
+```
+
+Y el nuevo ZIP trae:
+
+```txt
+src/index.ts
+content: console.log('hello');
+hash: X
+```
+
+El resultado esperado es:
+
+```txt
+No crear otro ProjectFile.
+```
+
+Es decir:
+
+```txt
+Antes había 1 archivo.
+Después debe seguir habiendo 1 archivo.
+```
+
+Además, mientras se mantenía todavía la respuesta antigua del caso de uso, el resultado esperado era:
+
+```txt
+filesCreated = 0
+files = []
+```
+
+Porque no se había creado ningún archivo nuevo.
+
+Al principio, el test fallaba porque el caso de uso siempre creaba archivos válidos sin comprobar si ya existían.
+
+Para hacer pasar el test, se modificó `UploadProjectZipUseCase` para que hiciera lo siguiente:
+
+```txt
+1. Cargar los ProjectFile actuales del proyecto.
+2. Crear un Map por path.
+3. Recorrer cada archivo del ZIP.
+4. Si no existe el path → crear.
+5. Si existe y el hash es igual → no hacer nada.
+```
+
+Con este cambio, el caso de uso carga los archivos actuales del proyecto, los organiza por `path` y evita duplicados.
+
+El primer paso de sincronización quedó resuelto:
+
+```txt
+Si el ZIP trae un archivo que ya existe
+y el hash es igual
+→ no se duplica
+```
+
+---
+
+### 2. Test: actualizar archivo con mismo path y hash distinto
+
+El siguiente comportamiento fue gestionar archivos que ya existen, pero cuyo contenido ha cambiado.
+
+El caso esperado era:
+
+```txt
+Mismo path
+pero contenido distinto
+→ no crear otro archivo
+→ actualizar el ProjectFile existente
+```
+
+Al principio, el test fallaba porque el caso de uso interpretaba este caso como si tuviera que crear un nuevo `ProjectFile`.
+
+El comportamiento anterior era:
+
+```txt
+mismo path + hash distinto
+→ crea otro ProjectFile nuevo
+```
+
+Para solucionarlo, se añadió el método `update` al puerto del repositorio de archivos.
+
+También se añadió ese método en:
+
+```txt
+ProjectFileRepository
+InMemory/FakeProjectFileRepository usado en tests
+PostgresProjectFileRepository
+```
+
+Después se modificó el caso de uso para añadir un caso intermedio:
+
+```txt
+si existe y hash igual     → no hacer nada
+si existe y hash distinto  → actualizar
+si no existe               → crear
+```
+
+Con este cambio, el comportamiento quedó así:
+
+```txt
+Archivo no existe en BD
+→ save()
+→ se crea nuevo ProjectFile
+```
+
+```txt
+Archivo existe y hash igual
+→ continue
+→ no se duplica
+```
+
+```txt
+Archivo existe y hash distinto
+→ update()
+→ se actualiza el ProjectFile existente
+```
+
+En este punto, `UploadProjectZipUseCase` ya era más inteligente, porque no se limitaba a crear siempre archivos nuevos.
+
+Todavía se mantenía la respuesta antigua:
+
+```json
+{
+  "projectId": "project-1",
+  "filesCreated": 0,
+  "files": []
+}
+```
+
+Esto se mantuvo temporalmente para no cambiar el contrato del endpoint antes de tiempo.
+
+---
+
+##3 3. Test: borrar archivos que ya no vienen en el ZIP
+
+El siguiente comportamiento fue eliminar archivos que existían en base de datos, pero que ya no aparecen en el ZIP nuevo.
+
+El caso esperado era:
+
+```txt
+Archivo existía en BD
+pero ya no viene en el ZIP nuevo
+→ se elimina
+```
+
+Se creó el test correspondiente y, como era esperado, al principio no pasaba.
+
+Para implementarlo, se añadió la lógica necesaria en el caso de uso:
+
+```txt
+Si un ProjectFile existe en BD
+pero su path no aparece en el ZIP nuevo
+→ borrarlo
+```
+
+En este punto todavía no se cambió la respuesta del caso de uso.
+
+Se siguió manteniendo temporalmente:
+
+```json
+{
+  "projectId": "project-1",
+  "filesCreated": 0,
+  "files": []
+}
+```
+
+Aunque esta respuesta ya no contaba toda la verdad, porque ahora también podían ocurrir actualizaciones y eliminaciones.
+
+---
+
+### Sincronización básica completada a nivel de caso de uso
+
+Con los tests anteriores, quedó implementada la sincronización básica por `path` y `hash`.
+
+El comportamiento de `UploadProjectZipUseCase` pasó a ser:
+
+```txt
+Archivo nuevo
+→ se crea
+```
+
+```txt
+Archivo existente + mismo hash
+→ no se duplica
+```
+
+```txt
+Archivo existente + hash distinto
+→ se actualiza
+```
+
+```txt
+Archivo existente en BD pero ausente en el ZIP nuevo
+→ se elimina
+```
+
+Este fue el cambio principal de la subfase.
+
+DevMind ya no interpreta cada subida de ZIP como una creación completa desde cero, sino como una sincronización entre el estado actual de PostgreSQL y el nuevo contenido del ZIP.
+
+---
+
+### Comprobación desde la API real
+
+Después de comprobar la sincronización a nivel de caso de uso, se pasó a comprobarla desde la API real.
+
+La idea era validar que el comportamiento también funcionaba en el flujo completo HTTP con PostgreSQL real de test.
+
+En este punto ya se tenía comprobada la sincronización en dos niveles:
+
+```txt
+1. Test unitario del caso de uso.
+2. Test de integración HTTP con PostgreSQL real de test.
+```
+
+El escenario probado fue:
+
+```txt
+Primer ZIP:
+
+src/index.ts
+src/app.ts
+src/old.ts
+```
+
+Después se sube un segundo ZIP:
+
+```txt
+src/index.ts    igual
+src/app.ts      cambiado
+src/new.ts      nuevo
+```
+
+Con este escenario, DevMind debía comportarse así:
+
+```txt
+src/index.ts → unchanged
+src/app.ts   → updated
+src/new.ts   → created
+src/old.ts   → deleted
+```
+
+Esto confirma que la sincronización funciona tanto internamente como desde el endpoint real.
+
+---
+
+### Evolución del contrato de respuesta
+
+Una vez comprobado el comportamiento de sincronización, se empezó a modificar la respuesta del caso de uso para que reflejara todo lo que estaba ocurriendo.
+
+La respuesta antigua era insuficiente:
+
+```json
+{
+  "projectId": "project-1",
+  "filesCreated": 0,
+  "files": []
+}
+```
+
+El problema es que ahora el caso de uso no solo crea archivos. También puede actualizar, eliminar o dejar archivos sin cambios.
+
+Por eso se empezó a cambiar hacia una respuesta nueva basada en `summary`:
+
+```json
+{
+  "projectId": "project-1",
+  "summary": {
+    "created": 2,
+    "updated": 1,
+    "deleted": 1,
+    "unchanged": 14
+  },
+  "files": {
+    "created": [],
+    "updated": [],
+    "deleted": [],
+    "unchanged": []
+  }
+}
+```
+
+El primer paso fue modificar el primer test unitario para esperar la nueva respuesta.
+
+Ese test falló al principio porque:
+
+```txt
+result.summary todavía no existía
+```
+
+Después se modificó el caso de uso para ir registrando cada rama de la sincronización y devolver el `summary` correspondiente.
+
+Con este cambio, el primer test pasó, pero el resto de tests todavía necesitaban adaptarse porque seguían esperando el contrato anterior.
+
+---
+
+### Estado alcanzado en esta subfase
+
+En esta subfase, DevMind ha evolucionado la subida de ZIP para que deje de crear duplicados y empiece a sincronizar correctamente los archivos del proyecto.
+
+El comportamiento conseguido es:
+
+```txt
+Si el archivo es nuevo
+→ se crea.
+```
+
+```txt
+Si el archivo ya existe y tiene el mismo hash
+→ no se duplica.
+```
+
+```txt
+Si el archivo ya existe con el mismo path pero distinto hash
+→ se actualiza.
+```
+
+```txt
+Si el archivo existía en PostgreSQL pero ya no viene en el ZIP
+→ se elimina.
+```
+
+También se ha empezado a evolucionar el contrato de respuesta para que no devuelva únicamente archivos creados, sino un resumen más completo con archivos creados, actualizados, eliminados y sin cambios.
+
+Esta subfase deja a DevMind preparado para que la subida de ZIP funcione como una sincronización real del proyecto, algo clave para las siguientes fases de chunks, embeddings y RAG.
+

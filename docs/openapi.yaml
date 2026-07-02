@@ -34,6 +34,11 @@ components:
       properties:
         message:
           type: string
+        errors:
+          type: object
+          description: >
+            Árbol de errores de validación de Zod (solo presente en errores
+            400 de validación de body, mensaje "Validation error").
       required:
         - message
 
@@ -76,15 +81,49 @@ components:
       properties:
         projectId:
           type: string
-        filesCreated:
-          type: integer
+        summary:
+          type: object
+          properties:
+            created:
+              type: integer
+            updated:
+              type: integer
+            deleted:
+              type: integer
+            unchanged:
+              type: integer
+          required:
+            - created
+            - updated
+            - deleted
+            - unchanged
         files:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectFile"
+          type: object
+          properties:
+            created:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectFile"
+            updated:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectFile"
+            deleted:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectFile"
+            unchanged:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectFile"
+          required:
+            - created
+            - updated
+            - deleted
+            - unchanged
       required:
         - projectId
-        - filesCreated
+        - summary
         - files
 
     ProjectFile:
@@ -403,10 +442,14 @@ paths:
     post:
       tags:
         - Upload ZIP
-      summary: Subir un ZIP y crear automáticamente los archivos del proyecto
+      summary: Subir un ZIP y sincronizar los archivos del proyecto
       description: >
         Recibe un archivo ZIP via multipart/form-data, extrae su contenido
         e ignora carpetas como node_modules, .git, dist, build, coverage y .next.
+        Compara cada archivo del ZIP con los archivos existentes del proyecto
+        por ruta y hash: crea los archivos nuevos, actualiza los que cambiaron,
+        deja intactos los que no cambiaron (unchanged) y borra los archivos
+        existentes cuya ruta ya no está presente en el ZIP.
         Devuelve 400 si no se adjunta archivo o si el ZIP no contiene archivos válidos.
       security:
         - bearerAuth: []
