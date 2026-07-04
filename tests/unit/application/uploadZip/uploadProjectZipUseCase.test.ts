@@ -39,8 +39,48 @@ class FakeSequentialIdGenerator {
   }
 }
 
+class FakeGenerateCodeChunksForProjectFileUseCase {
+  public generatedProjectFileIds: string[] = [];
+  public generatedProjectFilePaths: string[] = [];
+
+  async execute(input: {
+    projectFile: {
+      id: string;
+      path: string;
+    };
+  }): Promise<void> {
+    this.generatedProjectFileIds.push(input.projectFile.id);
+    this.generatedProjectFilePaths.push(input.projectFile.path);
+  }
+}
+
 function calculateHash(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+function createUploadProjectZipUseCase(input: {
+  projectRepository: FakeProjectRepository;
+  projectFileRepository: FakeProjectFileRepository;
+  zipExtractor: FakeZipExtractor;
+  idGenerator: FakeSequentialIdGenerator;
+  generateCodeChunksForProjectFileUseCase?: FakeGenerateCodeChunksForProjectFileUseCase;
+}) {
+  const generateCodeChunksForProjectFileUseCase =
+    input.generateCodeChunksForProjectFileUseCase ??
+    new FakeGenerateCodeChunksForProjectFileUseCase();
+
+  const useCase = new UploadProjectZipUseCase(
+    input.projectRepository,
+    input.projectFileRepository,
+    input.zipExtractor,
+    input.idGenerator,
+    generateCodeChunksForProjectFileUseCase,
+  );
+
+  return {
+    useCase,
+    generateCodeChunksForProjectFileUseCase,
+  };
 }
 
 describe("UploadProjectZipUseCase", () => {
@@ -69,12 +109,12 @@ describe("UploadProjectZipUseCase", () => {
 
     const idGenerator = new FakeSequentialIdGenerator(["file-1", "file-2"]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+    });
 
     const result = await useCase.execute({
       projectId: "project-1",
@@ -119,6 +159,57 @@ describe("UploadProjectZipUseCase", () => {
     expect(result.files.created[1].hash).toEqual(expect.any(String));
   });
 
+  it("generates code chunks for created project files", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: "console.log('hello');",
+      },
+      {
+        path: "package.json",
+        content: '{"name":"devmind-test"}',
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["file-1", "file-2"]);
+
+    const generateCodeChunksForProjectFileUseCase =
+      new FakeGenerateCodeChunksForProjectFileUseCase();
+
+    const { useCase } = createUploadProjectZipUseCase({
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+      generateCodeChunksForProjectFileUseCase,
+    });
+
+    await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFileIds,
+    ).toEqual(["file-1", "file-2"]);
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFilePaths,
+    ).toEqual(["src/index.ts", "package.json"]);
+  });
+
   it("does not upload files when the project does not belong to the user", async () => {
     const projectRepository = new FakeProjectRepository();
     const projectFileRepository = new FakeProjectFileRepository();
@@ -140,12 +231,16 @@ describe("UploadProjectZipUseCase", () => {
 
     const idGenerator = new FakeSequentialIdGenerator(["file-1"]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const generateCodeChunksForProjectFileUseCase =
+      new FakeGenerateCodeChunksForProjectFileUseCase();
+
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+      generateCodeChunksForProjectFileUseCase,
+    });
 
     await expect(
       useCase.execute({
@@ -157,6 +252,9 @@ describe("UploadProjectZipUseCase", () => {
 
     expect(zipExtractor.wasCalled).toBe(false);
     expect(projectFileRepository.projectFiles).toHaveLength(0);
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFileIds,
+    ).toEqual([]);
   });
 
   it("ignores files from ignored folders", async () => {
@@ -207,12 +305,12 @@ describe("UploadProjectZipUseCase", () => {
       "file-6",
     ]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+    });
 
     const result = await useCase.execute({
       projectId: "project-1",
@@ -274,12 +372,16 @@ describe("UploadProjectZipUseCase", () => {
 
     const idGenerator = new FakeSequentialIdGenerator(["file-1"]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const generateCodeChunksForProjectFileUseCase =
+      new FakeGenerateCodeChunksForProjectFileUseCase();
+
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+      generateCodeChunksForProjectFileUseCase,
+    });
 
     await expect(
       useCase.execute({
@@ -290,6 +392,9 @@ describe("UploadProjectZipUseCase", () => {
     ).rejects.toThrow("No valid project files found");
 
     expect(projectFileRepository.projectFiles).toHaveLength(0);
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFileIds,
+    ).toEqual([]);
   });
 
   it("does not duplicate unchanged files when uploading the same zip again", async () => {
@@ -326,12 +431,12 @@ describe("UploadProjectZipUseCase", () => {
 
     const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+    });
 
     const result = await useCase.execute({
       projectId: "project-1",
@@ -372,6 +477,66 @@ describe("UploadProjectZipUseCase", () => {
     });
   });
 
+  it("does not regenerate code chunks for unchanged project files", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const existingContent = "console.log('hello');";
+
+    await projectFileRepository.save({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: existingContent,
+      size: Buffer.byteLength(existingContent, "utf8"),
+      hash: calculateHash(existingContent),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: existingContent,
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
+
+    const generateCodeChunksForProjectFileUseCase =
+      new FakeGenerateCodeChunksForProjectFileUseCase();
+
+    const { useCase } = createUploadProjectZipUseCase({
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+      generateCodeChunksForProjectFileUseCase,
+    });
+
+    await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFileIds,
+    ).toEqual([]);
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFilePaths,
+    ).toEqual([]);
+  });
+
   it("updates an existing project file when the path is the same but content has changed", async () => {
     const projectRepository = new FakeProjectRepository();
     const projectFileRepository = new FakeProjectFileRepository();
@@ -407,12 +572,12 @@ describe("UploadProjectZipUseCase", () => {
 
     const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+    });
 
     const result = await useCase.execute({
       projectId: "project-1",
@@ -455,6 +620,67 @@ describe("UploadProjectZipUseCase", () => {
       size: Buffer.byteLength(newContent, "utf8"),
       hash: calculateHash(newContent),
     });
+  });
+
+  it("regenerates code chunks for updated project files", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const oldContent = "console.log('old');";
+    const newContent = "console.log('new');";
+
+    await projectFileRepository.save({
+      id: "existing-file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: oldContent,
+      size: Buffer.byteLength(oldContent, "utf8"),
+      hash: calculateHash(oldContent),
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: newContent,
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
+
+    const generateCodeChunksForProjectFileUseCase =
+      new FakeGenerateCodeChunksForProjectFileUseCase();
+
+    const { useCase } = createUploadProjectZipUseCase({
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+      generateCodeChunksForProjectFileUseCase,
+    });
+
+    await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFileIds,
+    ).toEqual(["existing-file-1"]);
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFilePaths,
+    ).toEqual(["src/index.ts"]);
   });
 
   it("deletes project files that are not present in the uploaded zip anymore", async () => {
@@ -503,12 +729,12 @@ describe("UploadProjectZipUseCase", () => {
 
     const idGenerator = new FakeSequentialIdGenerator(["new-file-1"]);
 
-    const useCase = new UploadProjectZipUseCase(
+    const { useCase } = createUploadProjectZipUseCase({
       projectRepository,
       projectFileRepository,
       zipExtractor,
       idGenerator,
-    );
+    });
 
     const result = await useCase.execute({
       projectId: "project-1",

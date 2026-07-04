@@ -36,6 +36,11 @@ import { PostgresProjectFileRepository } from "../infrastructure/repositoryAdapt
 import { AdmZipExtractor } from "../infrastructure/uploadZipAdapter/admZipExtractor";
 import { UploadProjectZipUseCase } from "../application/uploadZip/uploadProjectZipUseCase";
 
+//[IMPORTS PARA LA PARTE DE GENERAR CHUNKS]
+import { PostgresCodeChunkRepository } from "../infrastructure/repositoryAdapter/postgres/postgresCodeChunkRepository";
+import { LineCodeChunker } from "../application/codeChunk/lineCodeChunker";
+import { GenerateCodeChunksForProjectFileUseCase } from "../application/codeChunk/generateCodeChunksForProjectFileUseCase";
+
 //[INSTANCIAMOS LOS REPOSITORIOS]
 
 //Repositorios en memoria
@@ -47,6 +52,7 @@ import { UploadProjectZipUseCase } from "../application/uploadZip/uploadProjectZ
 const userRepository = new PostgresUserRepository(postgresPool);
 const projectRepository = new PostgresProjectRepository(postgresPool);
 const projectFileRepository = new PostgresProjectFileRepository(postgresPool);
+const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
 
 //Instanciamos las implementaciones de puertos
 const passwordHasher = new BcryptPasswordHasher();
@@ -54,6 +60,14 @@ const tokenService = new JwtTokenService();
 const idGenerator = new CryptoIdGenerator();
 const fileHashGenerator = new CryptoFileHashGenerator();
 const zipExtractor = new AdmZipExtractor();
+const codeChunker = new LineCodeChunker();
+
+const generateCodeChunksForProjectFileUseCase =
+  new GenerateCodeChunksForProjectFileUseCase(
+    codeChunkRepository,
+    codeChunker,
+    idGenerator,
+  );
 
 export const container = {
   userRepository,
@@ -110,6 +124,7 @@ export const container = {
     projectFileRepository,
     zipExtractor,
     idGenerator,
+    generateCodeChunksForProjectFileUseCase,
   ),
 
   tokenService,

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { ProjectFile } from "../../domain/entities/projectFile";
 import { ProjectRepository } from "../../domain/repository/projectRepository";
 import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
 import { IdGenerator } from "../../application/ports/idGeneratorPort";
@@ -13,12 +14,17 @@ type UploadProjectZipUseCaseInput = {
   zipBuffer: Buffer;
 };
 
+type GenerateCodeChunksForProjectFileUseCase = {
+  execute(input: { projectFile: ProjectFile }): Promise<unknown>;
+};
+
 export class UploadProjectZipUseCase {
   constructor(
     private readonly projectRepository: ProjectRepository,
     private readonly projectFileRepository: ProjectFileRepository,
     private readonly zipExtractor: ZipExtractor,
     private readonly idGenerator: IdGenerator,
+    private readonly generateCodeChunksForProjectFileUseCase: GenerateCodeChunksForProjectFileUseCase,
   ) {}
 
   async execute(input: UploadProjectZipUseCaseInput) {
@@ -79,6 +85,10 @@ export class UploadProjectZipUseCase {
           hash,
         });
 
+        await this.generateCodeChunksForProjectFileUseCase.execute({
+          projectFile: updatedProjectFile,
+        });
+
         updatedFiles.push(updatedProjectFile);
 
         continue;
@@ -98,15 +108,17 @@ export class UploadProjectZipUseCase {
       const savedProjectFile =
         await this.projectFileRepository.save(projectFile);
 
+      await this.generateCodeChunksForProjectFileUseCase.execute({
+        projectFile: savedProjectFile,
+      });
+
       createdFiles.push(savedProjectFile);
     }
 
-    // crea una lista rápida de rutas que vienen en el ZIP nuevo.
     const incomingFilePaths = new Set(
       validFiles.map((extractedFile) => extractedFile.path),
     );
 
-    // Por cada archivo que ya existía en BD: si su path NO está en el ZIP nuevo → borrarlo
     for (const existingProjectFile of existingProjectFiles) {
       if (!incomingFilePaths.has(existingProjectFile.path)) {
         await this.projectFileRepository.deleteByIdAndProjectId(

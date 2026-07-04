@@ -450,6 +450,9 @@ paths:
         por ruta y hash: crea los archivos nuevos, actualiza los que cambiaron,
         deja intactos los que no cambiaron (unchanged) y borra los archivos
         existentes cuya ruta ya no está presente en el ZIP.
+        Los archivos creados o actualizados se trocean y se indexan
+        internamente como fragmentos de código (code chunks) para su uso
+        futuro en búsqueda semántica; este proceso no altera la respuesta.
         Devuelve 400 si no se adjunta archivo o si el ZIP no contiene archivos válidos.
       security:
         - bearerAuth: []

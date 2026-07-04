@@ -3,6 +3,8 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 
 import { app } from "../../../src/app";
+import { postgresPool } from "../../../src/infrastructure/database/postgresPool";
+import { PostgresCodeChunkRepository } from "../../../src/infrastructure/repositoryAdapter/postgres/postgresCodeChunkRepository";
 
 describe("POST /projects/:projectId/upload", () => {
   it("uploads a project zip and creates project files", async () => {
@@ -92,6 +94,105 @@ describe("POST /projects/:projectId/upload", () => {
       language: "json",
       content: '{"name":"uploaded-project"}',
       size: Buffer.byteLength('{"name":"uploaded-project"}', "utf8"),
+    });
+  });
+
+  it("creates code chunks when uploading a project zip", async () => {
+    const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
+
+    await request(app).post("/auth/register").send({
+      name: "Carlos",
+      email: "upload-chunks@example.com",
+      password: "password123",
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email: "upload-chunks@example.com",
+      password: "password123",
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "Uploaded project with chunks",
+        description: "Project uploaded from ZIP and chunked",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const zip = new AdmZip();
+
+    zip.addFile(
+      "src/index.ts",
+      Buffer.from("console.log('hello from chunks');", "utf8"),
+    );
+
+    zip.addFile(
+      "package.json",
+      Buffer.from('{"name":"uploaded-project-with-chunks"}', "utf8"),
+    );
+
+    const uploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", zip.toBuffer(), {
+        filename: "project.zip",
+        contentType: "application/zip",
+      });
+
+    expect(uploadResponse.status).toBe(201);
+
+    expect(uploadResponse.body).toMatchObject({
+      projectId,
+      summary: {
+        created: 2,
+        updated: 0,
+        deleted: 0,
+        unchanged: 0,
+      },
+    });
+
+    const uploadedFiles = uploadResponse.body.files.created;
+
+    const indexFile = uploadedFiles.find(
+      (file: { path: string }) => file.path === "src/index.ts",
+    );
+
+    const packageJsonFile = uploadedFiles.find(
+      (file: { path: string }) => file.path === "package.json",
+    );
+
+    const indexFileChunks = await codeChunkRepository.findByProjectFileId(
+      indexFile.id,
+    );
+
+    const packageJsonFileChunks = await codeChunkRepository.findByProjectFileId(
+      packageJsonFile.id,
+    );
+
+    expect(indexFileChunks).toHaveLength(1);
+
+    expect(indexFileChunks[0]).toMatchObject({
+      projectId,
+      projectFileId: indexFile.id,
+      content: "console.log('hello from chunks');",
+      startLine: 1,
+      endLine: 1,
+      index: 0,
+    });
+
+    expect(packageJsonFileChunks).toHaveLength(1);
+
+    expect(packageJsonFileChunks[0]).toMatchObject({
+      projectId,
+      projectFileId: packageJsonFile.id,
+      content: '{"name":"uploaded-project-with-chunks"}',
+      startLine: 1,
+      endLine: 1,
+      index: 0,
     });
   });
 
@@ -353,6 +454,8 @@ describe("POST /projects/:projectId/upload", () => {
   });
 
   it("synchronizes project files when uploading an updated zip", async () => {
+    const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
+
     await request(app).post("/auth/register").send({
       name: "Carlos",
       email: "upload-sync@example.com",
@@ -417,6 +520,36 @@ describe("POST /projects/:projectId/upload", () => {
     expect(firstUploadResponse.body.files.updated).toHaveLength(0);
     expect(firstUploadResponse.body.files.deleted).toHaveLength(0);
     expect(firstUploadResponse.body.files.unchanged).toHaveLength(0);
+
+    const firstCreatedFiles = firstUploadResponse.body.files.created;
+
+    const firstIndexFile = firstCreatedFiles.find(
+      (file: { path: string }) => file.path === "src/index.ts",
+    );
+
+    const firstAppFile = firstCreatedFiles.find(
+      (file: { path: string }) => file.path === "src/app.ts",
+    );
+
+    const firstOldFile = firstCreatedFiles.find(
+      (file: { path: string }) => file.path === "src/old.ts",
+    );
+
+    const firstIndexFileChunks = await codeChunkRepository.findByProjectFileId(
+      firstIndexFile.id,
+    );
+
+    const firstAppFileChunks = await codeChunkRepository.findByProjectFileId(
+      firstAppFile.id,
+    );
+
+    const firstOldFileChunks = await codeChunkRepository.findByProjectFileId(
+      firstOldFile.id,
+    );
+
+    expect(firstIndexFileChunks).toHaveLength(1);
+    expect(firstAppFileChunks).toHaveLength(1);
+    expect(firstOldFileChunks).toHaveLength(1);
 
     const secondZip = new AdmZip();
 
@@ -534,5 +667,59 @@ describe("POST /projects/:projectId/upload", () => {
     });
 
     expect(oldFile).toBeUndefined();
+
+    const finalIndexFileChunks = await codeChunkRepository.findByProjectFileId(
+      indexFile.id,
+    );
+
+    const finalAppFileChunks = await codeChunkRepository.findByProjectFileId(
+      appFile.id,
+    );
+
+    const finalNewFileChunks = await codeChunkRepository.findByProjectFileId(
+      newFile.id,
+    );
+
+    const finalOldFileChunks = await codeChunkRepository.findByProjectFileId(
+      firstOldFile.id,
+    );
+
+    expect(finalIndexFileChunks).toHaveLength(1);
+
+    expect(finalIndexFileChunks[0]).toMatchObject({
+      id: firstIndexFileChunks[0].id,
+      projectId,
+      projectFileId: indexFile.id,
+      content: "console.log('index v1');",
+      startLine: 1,
+      endLine: 1,
+      index: 0,
+    });
+
+    expect(finalAppFileChunks).toHaveLength(1);
+
+    expect(finalAppFileChunks[0]).toMatchObject({
+      projectId,
+      projectFileId: appFile.id,
+      content: "export const app = 'v2';",
+      startLine: 1,
+      endLine: 1,
+      index: 0,
+    });
+
+    expect(finalAppFileChunks[0].id).not.toBe(firstAppFileChunks[0].id);
+
+    expect(finalNewFileChunks).toHaveLength(1);
+
+    expect(finalNewFileChunks[0]).toMatchObject({
+      projectId,
+      projectFileId: newFile.id,
+      content: "console.log('new file');",
+      startLine: 1,
+      endLine: 1,
+      index: 0,
+    });
+
+    expect(finalOldFileChunks).toEqual([]);
   });
 });

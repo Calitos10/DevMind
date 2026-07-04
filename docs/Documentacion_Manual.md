@@ -66,10 +66,6 @@ Fase 11 — Funciones inteligentes
 Fase 12 — Modo invitado / demo sin registro
 Fase 13 — Onboarding visual / presentación final
 
-
-
-
-
 ## . FASE 0
 
 Vamos a empezar a construir el proyecto:
@@ -689,11 +685,6 @@ Es decir:
 
 - Un proyecto puede tener varios archivos.
 
-
-
-
-
-
 La Fase 3 la vamos a hacer en partes pequeñas.
 
 Fase 3.1 — Base interna de ProjectFiles
@@ -712,7 +703,6 @@ La primera funcionalidad será:
 Crear un archivo dentro de un proyecto.
 
 Para terminar esta parte lo que haremos es construir las implementaciones de infraestructura de los puertos de aplicacion
-
 
 Fase 3.2 — Endpoints HTTP para ProjectFiles
 
@@ -735,11 +725,6 @@ Ejemplo:
 
 Esto nos permite probar la lógica sin mezclar todavía subida de archivos reales
 
-
-
-
-
-
 Regla de seguridad de Fase 3
 
 Esta regla sigue siendo igual de importante que en Fase 2:
@@ -761,11 +746,6 @@ Si no existe o no pertenece al usuario:
 
 Así evitamos que alguien pueda meter archivos en proyectos ajenos.
 
-
-
-
-
-
 IMPLEMENTACION DE LA FASE 3
 
 Fase 3.1 — Base interna de ProjectFiles
@@ -785,13 +765,11 @@ Ahora nos ponemos a implementar lls adaptadores en infraestructura del puerto de
 
 Ahora tenmos que modificar container para que instancie tambien esto
 
-
-
 2.[ListProjectFilesUseCase]
 
 Su responsabilidad será:
 
- - Listar los archivos de un proyecto, pero solo si ese proyecto pertenece al usuario autenticado.
+- Listar los archivos de un proyecto, pero solo si ese proyecto pertenece al usuario autenticado.
 
 Es decir:
 
@@ -801,23 +779,21 @@ Es decir:
             ↓
     devolver los ProjectFile de ese proyecto
 
-
 Empezamos como siempre creando el test unitario.
 
 El test falla porque todavia no hay nada creado
 
 Modificamos tanto el puerto como el adapter de ProjectFileRepository y InMemoryProjectFileRepository para añadirle el metodo de findByProjectId para poder buscar y listar los archivos.
 
-Creamos el caso de uso de  ListProjectFilesUseCase
+Creamos el caso de uso de ListProjectFilesUseCase
 
 Modificamos el anteriro test del caso de uso de crear porque el fake del repositorio de archivos solo implementa un metodo del repositorio.
-
 
 3.[GetProjectFileByIdUseCase]
 
 Su responsabilidad será:
 
- - Obtener un archivo concreto de un proyecto del usuario autenticado.
+- Obtener un archivo concreto de un proyecto del usuario autenticado.
 
 Es decir:
 
@@ -837,12 +813,11 @@ ACtualizamos tanto la interfaz del repositorio de archivos como la implementacio
 
 Nos ponemos a crear el caso de uso
 
-
 4.[DeleteProjectFileUseCase]
 
 Su responsabilidad será:
 
- - Borrar un archivo concreto de un proyecto del usuario autenticado.
+- Borrar un archivo concreto de un proyecto del usuario autenticado.
 
 La seguridad será la misma:
 
@@ -850,13 +825,11 @@ La seguridad será la misma:
     2. Comprobar que el archivo existe dentro de ese proyecto.
     3. Borrar el archivo.
 
-
 Creamos el test unitario.
 
 ACtualizamos tanto la interfaz del repositorio de archivos como la implementacion.
 
 Nos ponemos a crear el caso de uso
-
 
 Con esto, dejamos cerrada la capa interna de ProjectFiles:
 
@@ -869,21 +842,11 @@ Con esto, dejamos cerrada la capa interna de ProjectFiles:
 ✅ Container actualizado
 ✅ Tests unitarios pasando
 
-Ahora  pasamos a la parte HTTP, porque ya tenemos todos los casos de uso preparados.
-
-
-
-
-
-
-
-
-
-
+Ahora pasamos a la parte HTTP, porque ya tenemos todos los casos de uso preparados.
 
 Fase 3.2 — Endpoints HTTP para ProjectFiles
 
-Pasamos al siguiente bloque: HTTP 
+Pasamos al siguiente bloque: HTTP
 
 Seguimos con TDD pragmático:
 
@@ -893,14 +856,9 @@ Seguimos con TDD pragmático:
     4. Conectamos la ruta en app.ts.
     5. El test pasa.
 
-
 En estas fase todo es mas simple, incluso datos que le pasamos a los endpoitn que son hardcodeaods y que ma sadelante sera la app la que los saque y se los pase al endpoint
 
-
-
 Vamos a crear el fichero de test de integracion, iremos construyendo los tests de cada enpoint, y luego su implementacion:
-
-
 
 1. [POST /projects/:projectId/files]
 
@@ -923,7 +881,6 @@ El sistema los saca de aquí:
 
 Esto mantiene la misma idea que en projects: el cliente no decide quién es el dueño.
 
-
 Creamos el test para este endpoint, el cual falla.
 
 Ahora implementamos para que el test pase. El endpoint que queremos crear es:
@@ -939,18 +896,11 @@ Y debe hacer esto:
     5. Llamar a createProjectFileUseCase.
     6. Devolver 201 con el ProjectFile creado.
 
-
 Primero creamos el schema pra que el validatebody ( middlware) pueda validar lo que le pasamos
 
 Ahora creamos el controllador para projectfile
 
 Ahora creamos la rutas pra conectar el endpint con los middleware y el controller
-
-
-
-
-
-
 
 2. [GET /projects/:projectId/files]
 
@@ -976,10 +926,6 @@ Con estos casos:
     ✅ sin token → 401
     ✅ proyecto inexistente → 404
     ✅ proyecto de otro usuario → 404
-
-
-
-
 
 3. [GET /projects/:projectId/files/:fileId]
 
@@ -1007,8 +953,6 @@ Con estos casos:
     ✅ archivo inexistente → 404
     ✅ proyecto de otro usuario → 404
 
-
-
 4. [DELETE /projects/:projectId/files/:fileId]
 
 Este endpoint usará el caso de uso que ya tenemos:
@@ -1030,14 +974,6 @@ Añadimos el metodo getbyID al controller
 Añadimos la ruta en el ruter para este endpoint
 
 los test pasan, ahora añadimos nuevos test para asegurarnos cosas de errores y seguridad.
-
-
-
-
-
-
-
-
 
 Podemos Dar por cerrada la Fase 3 — ProjectFiles básica.
 
@@ -1075,17 +1011,11 @@ Con casos de:
     ✅ 404 proyecto de otro usuario
     ✅ 404 archivo inexistente
 
-
-
-
-
-
-
 ## . FASE 4
 
 Objetivo de esta fase:
 
- - Cambiar los repositorios en memoria por repositorios reales en PostgreSQL.
+- Cambiar los repositorios en memoria por repositorios reales en PostgreSQL.
 
 Ahora tienes esto:
 
@@ -1105,8 +1035,6 @@ Queremos llegar a esto:
 
 Lo bueno es que los casos de uso no deberían cambiar casi nada, porque ya están programados contra interfaces. Eso era justo una de las ventajas de la arquitectura limpia/hexagonal que estamos usando en DevMind.
 
-
-
 Primero solo vamos a levantar la base de datos. Todavía no vamos a tocar repositorios ni casos de uso.
 
 En la raiz del proyecto vamos a crear un docker-compose.yml
@@ -1115,11 +1043,9 @@ Añadimos y modificamos el . env con el DATABASE_URL
 
 Ahora levantamos el docker compose para ver si se carga el servidor.
 
-
-
 Ahora una vez verificado lo anteriro lo que vamos a conectar es node/express con nuestro servidor de postgre.
 
-Tenemos que instala pg y sus typos 
+Tenemos que instala pg y sus typos
 
 Una vez hecho eso podemos generar la pool de conecxion en una carpeta llamada database dentro de infraestrucutra dentro meteremos postgresPool.ts
 
@@ -1132,7 +1058,6 @@ Ahora mismo ya tienes esto:
     postgresPool
       ↓
     PostgreSQL en Docker
-
 
 Ahora el,siguiente paso es crear las tablas en la base de datos para usuarios, proyectos y archivos, en definitiva generar migraciones.
 
@@ -1156,8 +1081,8 @@ En estas instrucciones usaremos ON DELETE CASCADE.
 
 Por qué usamos ON DELETE CASCADE:
 
- - Si se borra un usuario, se borran sus proyectos.
- - Si se borra un proyecto, se borran automáticamente sus archivos.
+- Si se borra un usuario, se borran sus proyectos.
+- Si se borra un proyecto, se borran automáticamente sus archivos.
 
 Esto arregla el detalle que comentamos antes: no queremos archivos huérfanos si borramos un proyecto.
 
@@ -1178,7 +1103,6 @@ Pero ojo: todavía no hay datos
 
 Ahora mismo las tablas existen, pero probablemente están vacías.
 
-
 Ahora falta la parte realmente importante:
 
 ⬜ Crear PostgresUserRepository
@@ -1186,7 +1110,6 @@ Ahora falta la parte realmente importante:
 ⬜ Crear PostgresProjectFileRepository
 ⬜ Cambiar el container para usar PostgreSQL
 ⬜ Probar que los datos aparecen en TablePlus
-
 
 El orden correcto sería:
 
@@ -1196,7 +1119,6 @@ El orden correcto sería:
 4. Ver usuarios en TablePlus
 5. Luego PostgresProjectRepository
 6. Luego PostgresProjectFileRepository
-
 
 EMPEZAMOS:
 
@@ -1214,17 +1136,15 @@ La situación quedaría así:
     projects       → memoria todavía
     project_files  → memoria todavía
 
-
-
 2. [PostgresProjectRepository]
 
 hora vamos a hacer exactamente lo mismo con los proyectos.
 
 Es decir:
 
-  InMemoryProjectRepository
-              ↓
-  PostgresProjectRepository
+InMemoryProjectRepository
+↓
+PostgresProjectRepository
 
 Y una vez eso funcione:
 
@@ -1240,16 +1160,15 @@ Antes de continuar, me he encontrado un error, los test cuando los ejecuto lo qu
 
 Vamos a tener dos bases de datos:
 
- - devmind_db
+- devmind_db
 
-Para usar  manualmente con la API, frontend, TablePlus, curl, etc.
+Para usar manualmente con la API, frontend, TablePlus, curl, etc.
 
 Y otra:
 
- - devmind_test_db
+- devmind_test_db
 
 Solo para tests automáticos.
-
 
 Cada vez que ejecutes los tests:
 
@@ -1258,7 +1177,6 @@ Cada vez que ejecutes los tests:
     3. Se limpian users, projects y project_files antes de empezar.
     4. Se ejecutan los tests.
     5. Se vuelven a limpiar al terminar.
-
 
 Primer paso es crear la base de datos en el contenedor, la creamos
 
@@ -1272,10 +1190,9 @@ Ahora vamos a crear un fichero global de test que lo que hace es:
     4. Ejecuta los tests.
     5. Cuando terminan los tests, vuelve a limpiar las tablas.
 
-
 El siguiente paso será crear:
 
- - vitest.config.ts
+- vitest.config.ts
 
 para conectar globalSetup.ts.
 
@@ -1284,11 +1201,7 @@ Y ahira en el apckage.json cambiamos el comando script de los tests por esto, pa
     "test": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest run",
     "test:watch": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest"
 
-
-
 Este error ya esta solucionado y ahor apodemos seguir.
-
-
 
 3. [PostgresProjectRepository]
 
@@ -1312,8 +1225,6 @@ Ahora vamos a crear un script pequeño para probar el repositorio y cuando funci
 
 Ahora como funciona modificamos el container
 
-
-
 Ya hemos terminado la fse 4 en la que hemos implementado la persistnecia en postgre, en esta parte no hemos usado tdd puro sino que hemos realizado scripts que eriiaban si las comexiomnes, creaciones y demas estaban bien.
 
 Durante la migración a PostgreSQL se realizaron scripts de verificación manual para validar rápidamente la conexión y el comportamiento de los nuevos repositorios. Posteriormente, estas verificaciones se consolidaron como tests de integración automatizados ejecutables mediante npm test.
@@ -1323,18 +1234,23 @@ test-postgres-project-file-repository.ts --> postgresProjectFileRepository.test.
 test-postgres-project-repository.ts --> postgresProjectRepository.test.ts
 test-postgres-user-repository.ts --> postgresUserRepository.test.ts
 
+---
 
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
--------------------------------------------------------------------------
+---
 
+---
 
+---
+
+---
+
+---
+
+---
+
+---
+
+---
 
 ## . FASE 5
 
@@ -1364,45 +1280,42 @@ La idea será:
     ↓
     Guarda todos los ProjectFile en PostgreSQL
 
-
 Primera decisión importante
 
- - No vamos a meter toda la lógica del ZIP directamente en el controller.
+- No vamos a meter toda la lógica del ZIP directamente en el controller.
 
- - Mala idea:
+- Mala idea:
 
-      controller
-      ↓
-      recibe ZIP
-      ↓
-      extrae ZIP
-      ↓
-      filtra archivos
-      ↓
-      calcula hash
-      ↓
-      guarda en BD
+  controller
+  ↓
+  recibe ZIP
+  ↓
+  extrae ZIP
+  ↓
+  filtra archivos
+  ↓
+  calcula hash
+  ↓
+  guarda en BD
 
- - Eso ensucia mucho la capa HTTP.
+- Eso ensucia mucho la capa HTTP.
 
- - La idea buena será esta:
+- La idea buena será esta:
 
-    HTTP / Express
-    ↓
-    UploadProjectZipUseCase
-    ↓
-    ProjectRepository
-    ProjectFileRepository
-    ZipExtractor
-    IdGenerator
+  HTTP / Express
+  ↓
+  UploadProjectZipUseCase
+  ↓
+  ProjectRepository
+  ProjectFileRepository
+  ZipExtractor
+  IdGenerator
 
- - Es decir, crearemos un caso de uso:
+- Es decir, crearemos un caso de uso:
 
-    UploadProjectZipUseCase
+  UploadProjectZipUseCase
 
- - Este caso de uso será el cerebro de la operación.
-
-
+- Este caso de uso será el cerebro de la operación.
 
 El Endpoint que usaremos sera
 
@@ -1439,8 +1352,7 @@ Respuesta posible:
 
 IMPORTSNTE: De momento no hace falta devolver el content completo en la respuesta, porque si el ZIP contiene muchos archivos podría ser una respuesta enorme.
 
-
-Dependencias: 
+Dependencias:
 
 Más adelante necesitaremos probablemente:
 
@@ -1460,8 +1372,6 @@ Porque el primer test será del caso de uso, y para eso no necesitamos leer un Z
 
 Así probamos la lógica sin depender todavía de multer, adm-zip ni Express.
 
-
-
 Debemos crear tambien una nuva pieza que sera un puerto llamado sipextractor, el caso de uso no deberia saber como se hace la extraccion del zip, pero si que debe tener una interfaz que defina los metodos.
 
     La idea:
@@ -1469,7 +1379,6 @@ Debemos crear tambien una nuva pieza que sera un puerto llamado sipextractor, el
     UploadProjectZipUseCase
     ↓ usa
     ZipExtractor
-
 
 Orden usando TDD que seguiremos aproximadamente:
 
@@ -1480,7 +1389,6 @@ Orden usando TDD que seguiremos aproximadamente:
     5. Implementar endpoint con multer
     6. Implementar extractor real de ZIP
     7. Test final de integración con ZIP real
-
 
 1.[UploadProjectZipUseCase]
 
@@ -1493,7 +1401,7 @@ Vamos a crear una nueva carpeta dentro de test/unit/application ya que aqui denr
     filtrar carpetas
     detectar lenguaje
     calcular size/hash
-    crear muchos ProjectFile  
+    crear muchos ProjectFile
 
 Por ello creamos una nueva carpeta llamada uploadzip donde meteremos el test
 
@@ -1510,105 +1418,102 @@ Vamos a pasar a test especializados, Primeor vamos a modificar el fake del zip e
 
 Ahora vamos a añadir test al archivo para comprobar seguridad:
 
- - "No se puede subir un ZIP a un proyecto que no existe o que no pertenece al usuario autenticado.
+- "No se puede subir un ZIP a un proyecto que no existe o que no pertenece al usuario autenticado.
 
-   > Este test prepara este escenario:
+  > Este test prepara este escenario:
 
-        Existe project-1
-        pero pertenece a another-user
+       Existe project-1
+       pero pertenece a another-user
 
-   >Luego el usuario user-1 intenta subir un ZIP a ese proyecto.
+  > Luego el usuario user-1 intenta subir un ZIP a ese proyecto.
 
-        Resultado esperado:
+       Resultado esperado:
 
-        ❌ No se permite
-        ❌ No se extrae el ZIP
-        ❌ No se guarda ningún ProjectFile
+       ❌ No se permite
+       ❌ No se extrae el ZIP
+       ❌ No se guarda ningún ProjectFile
 
-    > Esta parte es muy importante para la seguridad.
+  > Esta parte es muy importante para la seguridad.
 
-    >Aunque realmente el proyecto existe, para user-1 debe comportarse como si no existiera.
+  > Aunque realmente el proyecto existe, para user-1 debe comportarse como si no existiera.
 
-    > Esto evita revelar información.
+  > Esto evita revelar información.
 
-    >No queremos decir:
+  > No queremos decir:
 
-        403 Forbidden: este proyecto existe pero no es tuyo
+       403 Forbidden: este proyecto existe pero no es tuyo
 
-    > Porque eso le confirma al usuario que ese projectId existe.
+  > Porque eso le confirma al usuario que ese projectId existe.
 
-    >Preferimos:
+  > Preferimos:
 
-        404 Project not found
+       404 Project not found
 
-    >O a nivel de caso de uso:
+  > O a nivel de caso de uso:
 
-        Project not found
+       Project not found
 
-    > Este tes deberia pasar ya que el caso de uso asegura eso
+  > Este tes deberia pasar ya que el caso de uso asegura eso
 
- - Ignorar carpetas y archivos que no queremos guardar (node_modules, .git, dist)
+- Ignorar carpetas y archivos que no queremos guardar (node_modules, .git, dist)
 
-   >Este test dice:
+  > Este test dice:
 
-        Si el ZIP trae 6 archivos
-        pero 5 están dentro de carpetas ignoradas
-        entonces solo se debe guardar 1 ProjectFile real
+       Si el ZIP trae 6 archivos
+       pero 5 están dentro de carpetas ignoradas
+       entonces solo se debe guardar 1 ProjectFile real
 
-   >En este caso solo debería guardarse:
+  > En este caso solo debería guardarse:
 
-        src/index.ts
+       src/index.ts
 
-   > Este test no pasa aun, porque en el caso de uso no tenemos nada que lo que haga es filtar las carpetas que quermos y que no, por ello, en el casod e uso metemos una funcion que haga eso y luego que pase solo las carpetas filtradas
+  > Este test no pasa aun, porque en el caso de uso no tenemos nada que lo que haga es filtar las carpetas que quermos y que no, por ello, en el casod e uso metemos una funcion que haga eso y luego que pase solo las carpetas filtradas
 
+- Pasar un error si el zip que se sube no tiene ningun archivo valido.
 
- - Pasar un error si el zip que se sube no tiene ningun archivo valido.
+  > ¿Qué pasa si el ZIP no tiene ningún archivo válido?
 
-   > ¿Qué pasa si el ZIP no tiene ningún archivo válido?
-   
-   >Por ejemplo, el usuario sube un ZIP que solo contiene:
+  > Por ejemplo, el usuario sube un ZIP que solo contiene:
 
-        node_modules/
-        .git/
-        dist/
-        coverage/
+       node_modules/
+       .git/
+       dist/
+       coverage/
 
-   >O sube un ZIP vacío.
-   
-   >En ese caso, no tendría sentido devolver:
+  > O sube un ZIP vacío.
 
-        {
-        "filesCreated": 0,
-        "files": []
-        }
+  > En ese caso, no tendría sentido devolver:
 
-   >Porque parecería que la subida ha ido bien, pero realmente DevMind no ha importado nada útil.
-   
-   >Lo más lógico sería fallar con un error tipo:
+       {
+       "filesCreated": 0,
+       "files": []
+       }
 
-        No valid project files found
+  > Porque parecería que la subida ha ido bien, pero realmente DevMind no ha importado nada útil.
 
-   >Más adelante, en el endpoint HTTP, ese error lo convertiremos en un 400 Bad Request.
+  > Lo más lógico sería fallar con un error tipo:
 
-   > Ahora mismo seguramente fallará, porque tu caso de uso probablemente hace esto:
+       No valid project files found
 
-        extrae archivos
-        ↓
-        filtra archivos ignorados
-        ↓
-        si no queda ninguno, devuelve filesCreated: 0
+  > Más adelante, en el endpoint HTTP, ese error lo convertiremos en un 400 Bad Request.
 
-   >Pero queremos esto:
+  > Ahora mismo seguramente fallará, porque tu caso de uso probablemente hace esto:
 
-        extrae archivos
-        ↓
-        filtra archivos ignorados
-        ↓
-        si no queda ninguno, lanza error
+       extrae archivos
+       ↓
+       filtra archivos ignorados
+       ↓
+       si no queda ninguno, devuelve filesCreated: 0
 
-   > Añadimos en el caso de uso un apartado que lance error si no quedan archivos validos
+  > Pero queremos esto:
 
+       extrae archivos
+       ↓
+       filtra archivos ignorados
+       ↓
+       si no queda ninguno, lanza error
 
+  > Añadimos en el caso de uso un apartado que lance error si no quedan archivos validos
 
 Con esto ya habriamos terminado UploadProjectZipUseCase y la logica interna
 
@@ -1618,10 +1523,7 @@ Con esto ya habriamos terminado UploadProjectZipUseCase y la logica interna
         ✅ ignora carpetas innecesarias
         ✅ falla si no hay archivos válidos
 
-
 Ahora el siguiente bloque sería pasar a la capa HTTP.
-
-
 
 2.[POST /projects/:projectId/upload]
 
@@ -1638,7 +1540,6 @@ El objetivo del primer test HTTP será:
         Cuando sube un ZIP válido a /projects/:projectId/upload
         Entonces la API devuelve 201
         Y crea ProjectFile en PostgreSQL
-
 
 Para el endpoint real necesitaremos dos dependencias:
 
@@ -1668,8 +1569,7 @@ Es decir:
         package.json
         README.md
 
-
-Orden que haremos: 
+Orden que haremos:
 
         1. Instalar multer, adm-zip y @types/multer
         2. Crear test HTTP en rojo para POST /projects/:projectId/upload
@@ -1678,17 +1578,15 @@ Orden que haremos:
         5. Registrar UploadProjectZipUseCase en el container
         6. Hacer pasar el test
 
-
 EMPEZAMOS:
 
-Primero instalamos las dependencias : 
+Primero instalamos las dependencias :
 
         npm install multer adm-zip
         npm install -D @types/multer @types/adm-zip
 
-multer  → para recibir el ZIP
+multer → para recibir el ZIP
 adm-zip → para extraer los archivos del ZIP
-
 
 Ahora empezamos creando el test del endpoint, que no pasara
 
@@ -1712,7 +1610,6 @@ El test pasa, ahoa vamos a implementar, queremos lo siguient:
         ↓
         respuesta 201
 
-
 Primero vamos a implementar el extractor real de infraestuctura del zip : admZipExtractor que sera el extractor que reciba un zip y devuelva los archivos con el path y el contenido.
 
 Ahora vamos a registrar el caos de uso en el container para tenerlo instanciado.
@@ -1721,7 +1618,7 @@ Una vez hecho eso lo que tenemos que hacer es modificar el project route par poi
 
 Hemos tenido que corregir el test, porque el etractor de zip no asegura el orden y al coger los archivos puede venir desordenado, entonces,El test no debe depender de que src/index.ts venga antes que package.json; lo importante es que ambos archivos existan en la respuesta.
 
-Ahora vamos a modificar el test para añadir seguridad: 
+Ahora vamos a modificar el test para añadir seguridad:
 
 - Si el usuario llama al endpoint sin enviar archivo ZIP, la API debe responder 400.
 
@@ -1741,12 +1638,9 @@ Ahora vamos a modificar el test para añadir seguridad:
 
         Porque en el caso de uso ya lo tenemos cubierto, pero ahora falta validar cómo se comporta desde HTTP.
 
+- Comprobar que el endpoint ignora node_modules, .git, dist, coverage, .next...
 
- - Comprobar que el endpoint ignora node_modules, .git, dist, coverage, .next...
-
-        Ya lo tenemos probado en unitario, pero estaría bien validar que el flujo real HTTP también lo respeta cuando el ZIP real contiene esos archivos.
-
-
+       Ya lo tenemos probado en unitario, pero estaría bien validar que el flujo real HTTP también lo respeta cuando el ZIP real contiene esos archivos.
 
 ## . FASE 5.1
 
@@ -1772,7 +1666,6 @@ Usaremos:
         path → para saber si es el mismo archivo
         hash → para saber si cambió el contenido
 
-
 Ejemplo:
 
         src/index.ts existe y hash igual      → unchanged
@@ -1788,7 +1681,6 @@ Esto será muy útil para el futuro RAG porque, cuando tengamos chunks y embeddi
         archivo eliminado  → borrar sus chunks/embeddings
 
 Así DevMind será más eficiente y más realista.
-
 
 ¿Que pasa si el usuario mueve un archivo entre carpetas?
 
@@ -1819,11 +1711,6 @@ Para una primera versión está bien, porque el resultado final será correcto:
         La BD ya no tendrá el archivo en su ruta antigua.
 
 Para RAG, eso es suficiente.
-
-
-
-
-
 
 [EMPEZAMOS A IMPLEMENTAR:]
 
@@ -1879,7 +1766,6 @@ Con sincronización queremos evolucionarlo a algo así:
         }
         }
 
-
 Como siempre seguimos la metodlogia TDD.
 
 Vamos a empezar por el caso de uso, no por el endpoint.
@@ -1901,7 +1787,6 @@ Pero siguiendo TDD, no vamos a implementarlo todavía en PostgreSQL hasta que un
 
 Primero empezamos por el test unitario del caso de uso, usando el FakeProjectFileRepository.
 
-
 1. [Test no duplicar archivo unchanged]
 
 En el test unitario del caso de uso que tenemos de UploadProjectZipUseCase vamos a añadir un nuevo test. Antes de esribirlo vamos a modificar lo que va a devolver el caso de uso que ahora sera :
@@ -1921,7 +1806,8 @@ En el test unitario del caso de uso que tenemos de UploadProjectZipUseCase vamos
                     "unchanged": []
                 }
                 }
-        
+
+
 Esto causara error en otros test asique hay que adaptarlos.
 
 Pero primeo empezamos con el test, que falle y ya iremos modificando todo.
@@ -1982,7 +1868,7 @@ Ahora vamos a implementar en el caso de uso:
 
 Lo que hemos añadido es:
 
- - Carga los archivos actuales del proyecto  los organiza por path y evita duplicados
+- Carga los archivos actuales del proyecto los organiza por path y evita duplicados
 
 Con estoel nuevo test pasara y los test antiguos debene pasar tambien ya que hemos mantenido aun la respuesta antigua.
 
@@ -2005,7 +1891,6 @@ El test falla porque ahora mismo el caso de uso hace :
 
         mismo path + hash distinto
         → crea otro ProjectFile nuevo
-
 
 Vamos a implementar para que el test pase.
 
@@ -2036,7 +1921,6 @@ Lo añadimos y Con esto ya tenemos:
         Archivo existe y hash distinto
         → update()
         → se actualiza el ProjectFile existente
-
 
 Ya estaria, Ahora el comportamiento del caso de uso es más inteligente:
 
@@ -2083,8 +1967,7 @@ No vamos a cambiar todavía la respuesta del caso de uso. Seguimos manteniendo:
         files
         }
 
-
-Con esto ya ,  a nivel caso de uso ya tenemos implementada la sincronización básica por path + hash.
+Con esto ya , a nivel caso de uso ya tenemos implementada la sincronización básica por path + hash.
 
 Ahora UploadProjectZipUseCase hace esto:
 
@@ -2139,8 +2022,306 @@ Este test fallara poraue result.summary todavía no existe. Vamos a implementarl
 
 Ahora este test pasar , pero el resto no porque aun sigue con el anterior resulatdo.
 
+## . FASE 6
 
+Ahora mismo se tiene esto:
 
+        Project
+        └── ProjectFile
 
+Y queremos llegar a esto:
 
-  
+        Project
+        └── ProjectFile
+            └── CodeChunk
+
+La idea está alineada con lo que ya tenías previsto: ProjectFile guarda el archivo completo y CodeChunk guardará fragmentos pequeños para poder hacer RAG más adelante sin mandar archivos enteros a la IA.
+
+Un CodeChunk será un trozo de un archivo.
+
+Por ejemplo, este archivo:
+
+        src/users/userService.ts
+
+podría generar varios chunks:
+
+        chunk 0 → imports
+        chunk 1 → definición de clase UserService
+        chunk 2 → método createUser
+        chunk 3 → método findUserByEmail
+
+Vamos a dividir el codigo por lineas.Por ejemplo:
+
+        Chunk 0 → líneas 1-80
+        Chunk 1 → líneas 71-150
+        Chunk 2 → líneas 141-220
+
+Eso incluye un pequeño overlap, es decir, unas líneas repetidas entre chunks para no cortar contexto de golpe.
+
+### Paso 1.
+
+Vamos a empezar creando la entidad de codechunk y la interfaz de repositorio.
+
+Entidad codeChunk:
+
+        export type CodeChunk = {
+        id: string;
+        projectId: string;
+        projectFileId: string;
+        content: string;
+        startLine: number;
+        endLine: number;
+        index: number;
+        createdAt: Date;
+        };
+
+- Guardaría también projectId, aunque ya pueda deducirse desde ProjectFile.
+
+- ¿Por qué? Porque más adelante, cuando busquemos chunks de un proyecto, será mucho más cómodo hacer:
+
+       WHERE project_id = ...
+
+en vez de tener que hacer joins todo el rato con project_files.
+
+Puerto Repositorio:
+
+        export interface CodeChunkRepository {
+        saveMany(codeChunks: CodeChunk[]): Promise<CodeChunk[]>;
+        findByProjectFileId(projectFileId: string): Promise<CodeChunk[]>;
+        deleteByProjectFileId(projectFileId: string): Promise<void>;
+        }
+
+- De momento no hace falta mucho más.
+
+- Más adelante, cuando lleguen embeddings, seguramente añadiremos búsquedas tipo:
+
+       findMostSimilarByProjectId(...)
+
+- Pero eso todavía no toca
+
+### Paso 2
+
+Vamos a crear una pieza llamada, por ejemplo:
+
+        LineCodeChunker
+
+Responsabilidad:
+
+Recibe el contenido de un archivo y lo divide en chunks por líneas.
+
+De momento no crea entidades CodeChunk completas con id, projectId, etc. Solo devuelve fragmentos con:
+
+        {
+        content: string;
+        startLine: number;
+        endLine: number;
+        index: number;
+        }
+
+Luego el caso de uso ya convertirá esos fragmentos en CodeChunk reales.
+
+Como seguimos TDD emepzaremos creando el archivo de test, este fallara y empezaremos a implementar.
+
+Una vez que el test falle, vamos a seguir con la implementacion del lineCodeChunker.
+
+De momento creamos una implementacion simple. Aunque sabemos que después tendrá que dividir archivos largos, ahora solo estamos cumpliendo el primer comportamiento que el test exige, siguiendo TDD: primero test, luego implementación mínima.
+
+Ahora los test pasan.
+
+Ahora hacemos el segundo test, todavía sin tocar la implementación. Queremos forzar que el LineCodeChunker ya no pueda devolver siempre un único chunk.
+
+Este test falla, Ahora toca modificar la implementación para que el LineCodeChunker pueda generar varios chunks cuando el archivo supera maxLinesPerChunk.
+
+Con esto deberían pasar los dos tests:
+
+        ✓ devuelve un único chunk si el archivo tiene menos líneas que el máximo
+        ✓ divide un archivo largo en varios chunks
+
+Ahora toca el tercer ciclo TDD: añadir overlap.
+
+El overlap es importante porque evita que un chunk corte el contexto de forma brusca. Por ejemplo, si un método empieza al final de un chunk y continúa en el siguiente, repetir unas líneas ayuda a que el siguiente chunk siga teniendo contexto. Esto encaja con el objetivo de preparar los archivos para RAG más adelante.
+
+Añadimso el tercer test, este test fallara y el siguiente paso es implementar el overlapLines.
+
+Ya enemos cubierto esto:
+
+        1. Archivo pequeño → 1 chunk
+        2. Archivo largo → varios chunks
+        3. Archivo largo con overlap → varios chunks solapados
+
+Ahora vamos a realizar un cuarto test importante antes de seguir: contenido vacío.
+
+Esto importa porque el proyecto ProjectFile.content puede estar vacío, y no queremos generar un chunk inútil vacío para RAG. Lo más limpio es que un archivo vacío devuelva []
+
+Añadimos el test alfinal del archivo de test
+
+Este test falla asique vamos ahora con la implementacion.
+
+Con esto ya tenemos:
+
+        ✅ archivo pequeño → 1 chunk
+        ✅ archivo largo → varios chunks
+        ✅ overlap entre chunks
+        ✅ contenido vacío → []
+
+Dandome cuenta, he notaod que Ahora mismo hay un caso peligroso:
+
+        maxLinesPerChunk: 3
+        overlapLines: 3
+
+O peor:
+
+        maxLinesPerChunk: 3
+        overlapLines: 4
+
+En esos casos esta línea:
+
+        const step = input.maxLinesPerChunk - input.overlapLines;
+
+daría 0 o negativo, y el bucle podría quedarse mal o infinito.
+
+Vamosa generar el test para esto y luego su implementacion. Con esto dejamos el LineCodeChunker suficientemente sólido para seguir con lo siguiente.
+
+### Paso 3
+
+Ahora vamos a empezar con el caso de uso, primero generamos los test como siempre.
+
+El test que creemos, comprueba tres cosas importantes:
+
+        1. Que antes de generar nuevos chunks se borran los chunks antiguos del archivo.
+        2. Que cada chunk generado se convierte en un CodeChunk real con id, projectId y projectFileId.
+        3. Que el caso de uso devuelve un resumen simple con los chunks creados.
+
+Cuando este tes falle, empezamos con el caso de uso.
+
+En el caso de uso, en vez de importar el propio linecodechunker lo que haremos es crear type para que asi el caso de uso no dependea estrcitramente de la implementacion del codechunker y que dependa de una interfaz ( ya que estamos siguiendo clean/hexagonal arquitecture).
+
+Ahora toca añadir un test más al caso de uso para cubrir un caso importante: ProjectFile con contenido vacío.
+
+Esto importa porque en tu proyecto ProjectFile.content puede estar vacío, pero para RAG no queremos guardar chunks vacíos. Además, aunque el archivo esté vacío, sí tiene sentido borrar chunks antiguos por si antes ese archivo tenía contenido y luego quedó vacío tras una resubida del ZIP.
+
+El Test del caso de uso no repite la responsabilidad del LineCodeChunker. El LineCodeChunker ya prueba que content: "" devuelve []; aquí solo probamos que el caso de uso se comporta bien cuando no hay chunks que guardar. Esto mantiene separadas las responsabilidades de la Fase 6: LineCodeChunker parte texto, y GenerateCodeChunksForProjectFileUseCase convierte esos resultados en CodeChunk y los persiste
+
+Añadimos el test al fichero de test.
+
+Ahora ya queda cerrado:
+
+    ✅ CodeChunk entity
+    ✅ CodeChunkRepository port
+    ✅ LineCodeChunker con tests
+    ✅ GenerateCodeChunksForProjectFileUseCase con tests
+    ✅ Caso de 0 chunks cubierto
+
+### Paso 4
+
+Ahora toca la siguiente pieza:
+
+        Persistir CodeChunks en PostgreSQL
+
+Es decir, crear:
+
+    004_create_code_chunks.sql
+    PostgresCodeChunkRepository
+    tests de integración del repositorio
+
+Pero siguiendo TDD, no empezamos por la migración ni por el repositorio. Empezamos por el test de integración que todavía va a fallar.
+
+Vamos a generar el Test que falle.
+
+Una vez que el test falla, vamos a empezar con las implementaciones:
+
+- Creamos la migracion para crear la tabla en el sql
+- Creamos el postgresCodeChunkRepository
+
+Ahora antes de continiar, vamos a añadir un nuevo tes para probar :
+
+        Si se borra un ProjectFile,
+        sus CodeChunks deben borrarse automáticamente por ON DELETE CASCADE.
+
+### Paso 5
+
+Integrar CodeChunks con la subida/resubida del ZIP
+
+La regla que vamos a implementar será esta:
+
+        created   → generar chunks
+        updated   → regenerar chunks
+        deleted   → borrar ProjectFile y dejar que PostgreSQL borre chunks por CASCADE
+        unchanged → no tocar chunks
+
+Esto encaja directamente con la sincronización que ya se hizo en Fase 5.1, donde el ZIP distingue archivos creados, actualizados, eliminados y sin cambios.
+
+Vamos a empezar añadiendo tests al archivo de test UploadProjectZipUseCase:
+
+- cuando se sube un ZIP con un archivo nuevo, debería generar chunks para el ProjectFile creado
+
+- cuando se resube un ZIP con un archivo actualizado, debería regenerar chunks para ese ProjectFile
+
+- cuando se resube un ZIP con un archivo unchanged, no debería regenerar chunks
+
+Lo que se añade al test es:
+
+- created → debe llamar al generador de chunks
+- updated → debe llamar al generador de chunks
+- unchanged → NO debe llamar al generador de chunks
+
+En el test, le pasamos al casod e uso de UploadProjectZipUseCase 5 dependencias en vez de 4 como esta configurado y el test fallara por eso.
+
+Debemos implementar eso en el caso de uso de UploadProjectZipUseCase, porque ahora le pasamos una dependencias para que no solo guarde los archivos sino que genere chunk de cada uno.
+
+Tambien debemos modificar el container para que le pasemos las 5 dependencias tambien
+
+### Paso 6
+
+Ahora toca el test de integración HTTP/PostgreSQL
+
+Es decir, comprobar que cuando llamas al endpoint real:
+
+        POST /projects/:id/upload
+
+no solo se crean ProjectFiles, sino que también aparecen registros reales en la tabla code_chunks.
+
+El siguiente test debería ir en el test de integración del endpoint ZIP, algo como:
+
+        cuando se sube un ZIP por HTTP,
+        debería crear ProjectFiles y también CodeChunks en PostgreSQL
+
+Y después otro:
+
+        cuando se resube un ZIP con un archivo modificado,
+        debería regenerar sus CodeChunks
+
+Con esto ya comprobado mediante test, podemos cerrar :
+
+        ✅ LineCodeChunker por líneas
+        ✅ Tests unitarios del LineCodeChunker
+        ✅ Entidad CodeChunk
+        ✅ Puerto CodeChunkRepository
+        ✅ Migración code_chunks
+        ✅ PostgresCodeChunkRepository
+        ✅ Tests de integración del repositorio
+        ✅ GenerateCodeChunksForProjectFileUseCase
+        ✅ Tests unitarios del caso de uso
+        ✅ Integración con UploadProjectZipUseCase
+        ✅ Integración real en POST /projects/:id/upload
+        ✅ Tests HTTP comprobando creación, actualización, unchanged y borrado por cascade
+
+La fase 6 quedaria:
+
+Se añadió una nueva entidad CodeChunk para representar fragmentos de código derivados de ProjectFile.
+
+Los archivos se dividen por líneas usando LineCodeChunker, con soporte para:
+
+- tamaño máximo por chunk;
+- overlap entre chunks;
+- contenido vacío;
+- validación de configuración inválida.
+
+Cada vez que se sube o resube un ZIP:
+
+- los archivos nuevos generan chunks;
+- los archivos modificados regeneran chunks;
+- los archivos eliminados borran sus chunks mediante ON DELETE CASCADE;
+- los archivos sin cambios conservan sus chunks.
+
+Esto prepara el sistema para la siguiente fase: embeddings y búsqueda semántica.

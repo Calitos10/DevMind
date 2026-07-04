@@ -52,14 +52,14 @@ Esto deja claro que DevMind no es solo un CRUD, sino una herramienta para entend
 | Fase 3  | Subida de archivos básica              | Añadir archivos dentro de proyectos mediante JSON, todavía sin ZIP.                                    |
 | Fase 4  | PostgreSQL                             | Pasar usuarios, proyectos y `ProjectFiles` a una base de datos real.                                   |
 | Fase 5  | Subida de ZIP                          | Subir ZIP, descomprimir, recorrer carpetas, filtrar archivos inútiles y guardar muchos `ProjectFiles`. |
-| Fase 6  | Resubida / actualización de proyecto   | Primera versión: borrar archivos anteriores y guardar los nuevos.                                      |
-| Fase 7  | Chunks                                 | Trocear `ProjectFiles` en fragmentos preparados para RAG.                                              |
-| Fase 8  | Embeddings + búsqueda semántica        | Generar embeddings y buscar chunks relevantes.                                                         |
-| Fase 9  | IA / RAG                               | Responder preguntas usando los chunks del proyecto.                                                    |
-| Fase 10 | Historial                              | Añadir historial de conversaciones o consultas.                                                        |
-| Fase 11 | Funciones inteligentes                 | Incorporar funcionalidades inteligentes adicionales.                                                   |
-| Fase 12 | Modo invitado / demo sin registro      | Permitir probar DevMind sin crear cuenta.                                                              |
-| Fase 13 | Onboarding visual / presentación final | Preparar la presentación final del proyecto.                                                           |
+| Fase 5.1  | Resubida / actualización de proyecto   | Sincronización de archivos por path y hashnuevos.                                      |
+| Fase 6  | Chunks                                 | Trocear `ProjectFiles` en fragmentos preparados para RAG.                                              |
+| Fase 7  | Embeddings + búsqueda semántica        | Generar embeddings y buscar chunks relevantes.                                                         |
+| Fase 8  | IA / RAG                               | Responder preguntas usando los chunks del proyecto.                                                    |
+| Fase 9 | Historial                              | Añadir historial de conversaciones o consultas.                                                        |
+| Fase 10 | Funciones inteligentes                 | Incorporar funcionalidades inteligentes adicionales.                                                   |
+| Fase 11 | Modo invitado / demo sin registro      | Permitir probar DevMind sin crear cuenta.                                                              |
+| Fase 12 | Onboarding visual / presentación final | Preparar la presentación final del proyecto.                                                           |
 
 ---
 
@@ -462,6 +462,17 @@ Se crea `AuthController`, que recibe el contenedor y ejecuta las acciones de reg
 
 Por último se crea `AuthRoutes`, donde se definen los endpoints y se conectan los middlewares de validación y los métodos del controller.
 
+### 11.8. Repositorio en memoria y container
+
+Se crea una implementación real en infraestructura del repositorio. De momento será en memoria.
+
+Después se modifica el container. Antes había piezas sueltas; ahora se instancian los casos de uso y repositorios para tener todo conectado.
+
+Con esto queda conectada la capa de aplicación de proyectos al container.
+
+---
+
+
 ### 11.8. Estrategia de testing
 
 El proyecto aplica una estrategia de TDD.
@@ -509,35 +520,7 @@ La idea principal es:
 | Pendiente | `DELETE /projects/:id` inexistente -> 404                       |
 | Pendiente | `DELETE /projects/:id` de otro usuario -> 404                   |
 
-## 14. Checklist de Postman
 
-### Flujo recomendado
-
-| Estado    | Prueba                                                  |
-| --------- | ------------------------------------------------------- |
-| Pendiente | Registrar usuario 1                                     |
-| Pendiente | Login usuario 1                                         |
-| Pendiente | Crear proyecto usuario 1                                |
-| Pendiente | Listar proyectos usuario 1                              |
-| Pendiente | Obtener proyecto usuario 1 por id                       |
-| Pendiente | Eliminar proyecto usuario 1                             |
-| Pendiente | Registrar usuario 2                                     |
-| Pendiente | Login usuario 2                                         |
-| Pendiente | Crear proyecto usuario 2                                |
-| Pendiente | Comprobar separación entre proyectos de user-1 y user-2 |
-
-### Endpoints a probar
-
-```http
-POST /auth/register
-POST /auth/login
-POST /projects
-GET /projects
-GET /projects/:id
-DELETE /projects/:id
-```
-
----
 
 ## 15. Casos de uso de proyectos
 
@@ -545,12 +528,13 @@ DELETE /projects/:id
 
 Su responsabilidad es crear un proyecto asociado a un usuario autenticado.
 
-Se empieza creando primero el test. El test falla porque todavía no están creados los imports necesarios.
-
-Después se crea en `domain`:
+Primero se crea lo necesario en `domain` para definir la logica y/o atributo que estableceremos:
 
 - La entidad `Project`.
 - El repositorio `ProjectRepository`.
+
+AHora, se empieza creando primero el test. El test falla porque todavía no están creados los imports necesarios.
+
 
 Luego se crea en `application`:
 
@@ -642,15 +626,6 @@ Y debe hacer:
 
 Primero se crea el test unitario, que falla porque todavía no está implementado. Después se implementa el caso de uso y los tests pasan.
 
-### 15.5. Repositorio en memoria y container
-
-Se crea una implementación real en infraestructura del repositorio. De momento será en memoria.
-
-Después se modifica el container. Antes había piezas sueltas; ahora se instancian los casos de uso y repositorios para tener todo conectado.
-
-Con esto queda conectada la capa de aplicación de proyectos al container.
-
----
 
 ## 16. Implementación HTTP de proyectos
 
@@ -868,6 +843,36 @@ transport
 
 container
   -> conexión de los casos de uso con el repositorio real temporal
+```
+
+---
+
+## 14. Checklist para probar en Postman
+
+### Flujo recomendado
+
+| Estado    | Prueba                                                  |
+| --------- | ------------------------------------------------------- |
+| Pendiente | Registrar usuario 1                                     |
+| Pendiente | Login usuario 1                                         |
+| Pendiente | Crear proyecto usuario 1                                |
+| Pendiente | Listar proyectos usuario 1                              |
+| Pendiente | Obtener proyecto usuario 1 por id                       |
+| Pendiente | Eliminar proyecto usuario 1                             |
+| Pendiente | Registrar usuario 2                                     |
+| Pendiente | Login usuario 2                                         |
+| Pendiente | Crear proyecto usuario 2                                |
+| Pendiente | Comprobar separación entre proyectos de user-1 y user-2 |
+
+### Endpoints a probar
+
+```http
+POST /auth/register
+POST /auth/login
+POST /projects
+GET /projects
+GET /projects/:id
+DELETE /projects/:id
 ```
 
 ---
@@ -2992,3 +2997,540 @@ También se ha empezado a evolucionar el contrato de respuesta para que no devue
 
 Esta subfase deja a DevMind preparado para que la subida de ZIP funcione como una sincronización real del proyecto, algo clave para las siguientes fases de chunks, embeddings y RAG.
 
+# Fase 6 — CodeChunks
+
+### Objetivo de la fase
+
+En esta fase se ha añadido una nueva pieza al proyecto: los `CodeChunk`.
+
+Hasta ahora, DevMind tenía esta estructura:
+
+```txt
+Project
+└── ProjectFile
+```
+
+El objetivo de esta fase ha sido evolucionar hacia esta estructura:
+
+```txt
+Project
+└── ProjectFile
+    └── CodeChunk
+```
+
+La idea principal es que `ProjectFile` siga guardando el archivo completo, mientras que `CodeChunk` guarde fragmentos más pequeños de ese archivo.
+
+Esto está alineado con el objetivo futuro de DevMind: preparar el código para poder hacer RAG más adelante sin tener que enviar archivos enteros a la IA.
+
+Un `CodeChunk` representa un trozo de un archivo.
+
+Por ejemplo, un archivo como:
+
+```txt
+src/users/userService.ts
+```
+
+podría dividirse en varios chunks:
+
+```txt
+chunk 0 → imports
+chunk 1 → definición de clase UserService
+chunk 2 → método createUser
+chunk 3 → método findUserByEmail
+```
+
+En esta primera versión, la división se hace por líneas.
+
+Por ejemplo:
+
+```txt
+Chunk 0 → líneas 1-80
+Chunk 1 → líneas 71-150
+Chunk 2 → líneas 141-220
+```
+
+Esto incluye un pequeño `overlap`, es decir, unas líneas repetidas entre chunks para no cortar el contexto de golpe.
+
+---
+
+## 1. Creación de la entidad CodeChunk y su repositorio
+
+El primer paso de la fase ha sido crear la entidad `CodeChunk`.
+
+La entidad queda definida con estos datos:
+
+```ts
+export type CodeChunk = {
+  id: string;
+  projectId: string;
+  projectFileId: string;
+  content: string;
+  startLine: number;
+  endLine: number;
+  index: number;
+  createdAt: Date;
+};
+```
+
+Cada `CodeChunk` guarda:
+
+* su propio identificador;
+* el proyecto al que pertenece;
+* el archivo del que viene;
+* el contenido del fragmento;
+* la línea inicial;
+* la línea final;
+* el índice del chunk dentro del archivo;
+* la fecha de creación.
+
+También se guarda `projectId`, aunque podría deducirse desde `ProjectFile`.
+
+La razón es que, más adelante, cuando haya que buscar chunks de un proyecto, será mucho más cómodo hacer una consulta directa por proyecto:
+
+```sql
+WHERE project_id = ...
+```
+
+en vez de tener que hacer joins constantemente con `project_files`.
+
+Después se creó el puerto del repositorio:
+
+```ts
+export interface CodeChunkRepository {
+  saveMany(codeChunks: CodeChunk[]): Promise<CodeChunk[]>;
+  findByProjectFileId(projectFileId: string): Promise<CodeChunk[]>;
+  deleteByProjectFileId(projectFileId: string): Promise<void>;
+}
+```
+
+De momento, el repositorio solo necesita estas operaciones básicas:
+
+* guardar varios chunks;
+* buscar chunks por archivo;
+* borrar chunks de un archivo.
+
+Más adelante, cuando lleguen los embeddings, se podrán añadir métodos más avanzados, como búsquedas de chunks similares por proyecto.
+
+---
+
+## 2. Creación de LineCodeChunker
+
+El siguiente paso fue crear una pieza llamada:
+
+```txt
+LineCodeChunker
+```
+
+Su responsabilidad es recibir el contenido de un archivo y dividirlo en fragmentos por líneas.
+
+En esta fase, `LineCodeChunker` no crea entidades `CodeChunk` completas. No asigna `id`, `projectId` ni `projectFileId`.
+
+Solo devuelve fragmentos con esta información:
+
+```ts
+{
+  content: string;
+  startLine: number;
+  endLine: number;
+  index: number;
+}
+```
+
+Después, el caso de uso será quien convierta esos fragmentos en entidades `CodeChunk` reales.
+
+Como en fases anteriores, se siguió TDD:
+
+```txt
+1. Crear el test.
+2. Ver que falla.
+3. Implementar lo mínimo necesario.
+4. Volver a pasar los tests.
+5. Añadir nuevos casos.
+```
+
+---
+
+### Primer test: archivo pequeño
+
+El primer comportamiento probado fue que, si el archivo tiene menos líneas que el máximo permitido por chunk, se devuelve un único chunk.
+
+Primero se creó el test y falló, porque todavía no existía la implementación.
+
+Después se creó una implementación simple de `LineCodeChunker`, suficiente para cumplir el primer comportamiento.
+
+Con esto, el primer test pasó.
+
+---
+
+### Segundo test: archivo largo dividido en varios chunks
+
+Después se añadió un segundo test para forzar que `LineCodeChunker` no pudiera devolver siempre un único chunk.
+
+El nuevo comportamiento esperado era:
+
+```txt
+Si el archivo supera maxLinesPerChunk,
+debe dividirse en varios chunks.
+```
+
+Este test falló al principio, porque la implementación todavía era demasiado simple.
+
+Después se modificó `LineCodeChunker` para generar varios chunks cuando el archivo supera el número máximo de líneas por chunk.
+
+Con esto quedaron cubiertos los dos primeros casos:
+
+```txt
+✓ devuelve un único chunk si el archivo tiene menos líneas que el máximo
+✓ divide un archivo largo en varios chunks
+```
+
+---
+
+### Tercer test: overlap entre chunks
+
+El tercer ciclo TDD consistió en añadir soporte para `overlap`.
+
+El `overlap` es importante porque evita que un chunk corte el contexto de forma brusca.
+
+Por ejemplo, si un método empieza al final de un chunk y continúa en el siguiente, repetir algunas líneas permite que el siguiente chunk siga teniendo contexto.
+
+Esto encaja con el objetivo de preparar los archivos para RAG más adelante.
+
+Se añadió el test correspondiente y, como era esperado, falló al principio.
+
+Después se implementó `overlapLines`.
+
+A partir de ese momento, `LineCodeChunker` ya cubría estos casos:
+
+```txt
+1. Archivo pequeño → 1 chunk
+2. Archivo largo → varios chunks
+3. Archivo largo con overlap → varios chunks solapados
+```
+
+---
+
+### Cuarto test: contenido vacío
+
+Después se añadió un caso importante: archivos con contenido vacío.
+
+Esto importa porque `ProjectFile.content` puede estar vacío, pero no queremos generar chunks vacíos que luego no servirían para RAG.
+
+La decisión fue que, si el contenido del archivo está vacío, `LineCodeChunker` debe devolver un array vacío:
+
+```txt
+[]
+```
+
+Se añadió el test al final del archivo de tests.
+
+El test falló al principio y después se modificó la implementación para soportar este caso.
+
+Con esto, `LineCodeChunker` ya cubría:
+
+```txt
+✅ archivo pequeño → 1 chunk
+✅ archivo largo → varios chunks
+✅ overlap entre chunks
+✅ contenido vacío → []
+```
+
+---
+
+### Quinto test: configuración inválida
+
+Durante la implementación se detectó un caso peligroso.
+
+Si se configuraba así:
+
+```txt
+maxLinesPerChunk: 3
+overlapLines: 3
+```
+
+o peor:
+
+```txt
+maxLinesPerChunk: 3
+overlapLines: 4
+```
+
+la línea que calcula el avance entre chunks podía dar un valor cero o negativo:
+
+```ts
+const step = input.maxLinesPerChunk - input.overlapLines;
+```
+
+Esto podía provocar un comportamiento incorrecto o incluso un bucle infinito.
+
+Para evitarlo, se creó un test específico para este caso y después se añadió la implementación necesaria.
+
+Con esto, `LineCodeChunker` quedó suficientemente sólido para continuar con el resto de la fase.
+
+---
+
+## 3. GenerateCodeChunksForProjectFileUseCase
+
+Una vez creado `LineCodeChunker`, el siguiente paso fue crear el caso de uso encargado de generar chunks para un `ProjectFile`.
+
+El caso de uso se encarga de:
+
+```txt
+1. Borrar los chunks antiguos del archivo.
+2. Dividir el contenido del archivo en fragmentos.
+3. Convertir esos fragmentos en entidades CodeChunk reales.
+4. Guardar los nuevos chunks.
+5. Devolver un resumen simple con los chunks creados.
+```
+
+Como siempre, se empezó creando el test.
+
+El test comprobaba tres cosas importantes:
+
+```txt
+1. Que antes de generar nuevos chunks se borran los chunks antiguos del archivo.
+2. Que cada chunk generado se convierte en un CodeChunk real con id, projectId y projectFileId.
+3. Que el caso de uso devuelve un resumen simple con los chunks creados.
+```
+
+Cuando el test falló, se empezó a implementar el caso de uso.
+
+---
+
+### Dependencia del chunker mediante interfaz
+
+En vez de importar directamente `LineCodeChunker` dentro del caso de uso, se creó un tipo o interfaz para representar la dependencia del chunker.
+
+La razón es que el caso de uso no debe depender estrictamente de una implementación concreta.
+
+Siguiendo la arquitectura limpia/hexagonal, el caso de uso debe depender de una abstracción, no directamente de la clase concreta que parte el código.
+
+Así, el caso de uso puede usar un chunker sin acoplarse a `LineCodeChunker`.
+
+---
+
+### Caso de contenido vacío
+
+Después se añadió un test más para cubrir un caso importante: `ProjectFile` con contenido vacío.
+
+Esto importa porque, aunque un archivo esté vacío, sí tiene sentido borrar sus chunks antiguos.
+
+Por ejemplo, puede ocurrir que antes ese archivo tuviera contenido, se hubieran generado chunks, y después, tras una resubida del ZIP, el archivo quedara vacío.
+
+En ese caso:
+
+```txt
+El archivo no debe generar chunks nuevos,
+pero sí deben eliminarse los chunks antiguos.
+```
+
+Este test no repite la responsabilidad de `LineCodeChunker`.
+
+`LineCodeChunker` ya prueba que `content: ""` devuelve `[]`.
+
+Aquí lo que se prueba es que el caso de uso se comporta correctamente cuando no hay chunks que guardar.
+
+Esto mantiene bien separadas las responsabilidades:
+
+```txt
+LineCodeChunker → parte texto
+GenerateCodeChunksForProjectFileUseCase → convierte fragmentos en CodeChunk y los persiste
+```
+
+Con esto quedó cerrado el bloque interno de generación de chunks:
+
+```txt
+✅ CodeChunk entity
+✅ CodeChunkRepository port
+✅ LineCodeChunker con tests
+✅ GenerateCodeChunksForProjectFileUseCase con tests
+✅ Caso de 0 chunks cubierto
+```
+
+---
+
+## 4. Persistencia de CodeChunks en PostgreSQL
+
+El siguiente paso fue persistir los `CodeChunk` en PostgreSQL.
+
+Para ello había que crear:
+
+```txt
+004_create_code_chunks.sql
+PostgresCodeChunkRepository
+tests de integración del repositorio
+```
+
+Siguiendo TDD, no se empezó directamente por la migración ni por el repositorio.
+
+Primero se creó el test de integración que todavía iba a fallar.
+
+Después, para hacer pasar el test, se implementaron las piezas necesarias:
+
+```txt
+1. Migración SQL para crear la tabla code_chunks.
+2. PostgresCodeChunkRepository.
+```
+
+---
+
+### Test de borrado por ON DELETE CASCADE
+
+Después se añadió un nuevo test para comprobar una regla importante:
+
+```txt
+Si se borra un ProjectFile,
+sus CodeChunks deben borrarse automáticamente por ON DELETE CASCADE.
+```
+
+Esto es importante porque los chunks dependen del archivo.
+
+Si un archivo desaparece, sus chunks no deben quedar guardados en la base de datos como información huérfana.
+
+Con este test se validó que la relación entre `project_files` y `code_chunks` quedaba correctamente configurada en PostgreSQL.
+
+---
+
+## 5. Integración de CodeChunks con la subida y resubida del ZIP
+
+Una vez que los chunks ya existían como entidad, caso de uso y repositorio, el siguiente paso fue integrarlos con la subida y resubida del ZIP.
+
+La regla implementada fue:
+
+```txt
+created   → generar chunks
+updated   → regenerar chunks
+deleted   → borrar ProjectFile y dejar que PostgreSQL borre chunks por CASCADE
+unchanged → no tocar chunks
+```
+
+Esta regla encaja directamente con la sincronización implementada en la Fase 5.1.
+
+En esa fase, el ZIP ya distinguía entre archivos:
+
+```txt
+created
+updated
+deleted
+unchanged
+```
+
+Ahora, esa información se usa también para decidir qué hacer con los chunks.
+
+---
+
+### Tests añadidos a UploadProjectZipUseCase
+
+Se añadieron nuevos tests al archivo de `UploadProjectZipUseCase`.
+
+Los comportamientos probados fueron:
+
+```txt
+cuando se sube un ZIP con un archivo nuevo,
+debería generar chunks para el ProjectFile creado
+```
+
+```txt
+cuando se resube un ZIP con un archivo actualizado,
+debería regenerar chunks para ese ProjectFile
+```
+
+```txt
+cuando se resube un ZIP con un archivo unchanged,
+no debería regenerar chunks
+```
+
+En resumen:
+
+```txt
+created   → debe llamar al generador de chunks
+updated   → debe llamar al generador de chunks
+unchanged → NO debe llamar al generador de chunks
+```
+
+Al principio, el test fallaba porque `UploadProjectZipUseCase` recibía una dependencia nueva para generar chunks, pero el constructor todavía estaba configurado con las dependencias anteriores.
+
+Se modificó el caso de uso para que, además de guardar y sincronizar archivos, también pudiera generar chunks cuando correspondiera.
+
+También se modificó el container para pasar esta nueva dependencia al caso de uso.
+
+---
+
+## 6. Test de integración HTTP/PostgreSQL
+
+El último bloque de esta fase fue comprobar que la integración funcionaba desde el endpoint real.
+
+Es decir, se quería comprobar que cuando se llama al endpoint:
+
+```txt
+POST /projects/:id/upload
+```
+
+no solo se crean `ProjectFile`, sino que también aparecen registros reales en la tabla `code_chunks`.
+
+El test de integración debía comprobar este comportamiento:
+
+```txt
+cuando se sube un ZIP por HTTP,
+debería crear ProjectFiles y también CodeChunks en PostgreSQL
+```
+
+Después también se añadió otro comportamiento importante:
+
+```txt
+cuando se resube un ZIP con un archivo modificado,
+debería regenerar sus CodeChunks
+```
+
+Con estos tests, la fase quedó comprobada tanto a nivel interno como a nivel HTTP real con PostgreSQL.
+
+---
+
+## Resultado final de la Fase 6
+
+Al terminar esta fase, DevMind ya no solo guarda archivos completos de proyecto.
+
+Ahora también puede generar fragmentos de código preparados para fases posteriores de búsqueda semántica e IA/RAG.
+
+La fase dejó implementado:
+
+```txt
+✅ LineCodeChunker por líneas
+✅ Tests unitarios del LineCodeChunker
+✅ Entidad CodeChunk
+✅ Puerto CodeChunkRepository
+✅ Migración code_chunks
+✅ PostgresCodeChunkRepository
+✅ Tests de integración del repositorio
+✅ GenerateCodeChunksForProjectFileUseCase
+✅ Tests unitarios del caso de uso
+✅ Integración con UploadProjectZipUseCase
+✅ Integración real en POST /projects/:id/upload
+✅ Tests HTTP comprobando creación, actualización, unchanged y borrado por cascade
+```
+
+El comportamiento final es:
+
+```txt
+Se añadió una nueva entidad CodeChunk para representar fragmentos de código derivados de ProjectFile.
+```
+
+Los archivos se dividen por líneas usando `LineCodeChunker`, con soporte para:
+
+```txt
+tamaño máximo por chunk;
+overlap entre chunks;
+contenido vacío;
+validación de configuración inválida.
+```
+
+Cada vez que se sube o resube un ZIP:
+
+```txt
+los archivos nuevos generan chunks;
+los archivos modificados regeneran chunks;
+los archivos eliminados borran sus chunks mediante ON DELETE CASCADE;
+los archivos sin cambios conservan sus chunks.
+```
+
+Esta fase deja el sistema preparado para la siguiente etapa del proyecto: embeddings y búsqueda semántica.
