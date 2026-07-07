@@ -2331,28 +2331,29 @@ Esto prepara el sistema para la siguiente fase: embeddings y búsqueda semántic
 
 ----------------------------------
 
+
+## . FASE 6.1
+
+En esta fase vamos a realizar un analisis de busqueda probelmas, insconsistencias y seguirdad:
+
+🟡 Inconsistencias:
+
+ - Naming de errores que mezcclava dos conevnciones
+ - Genracion de tipos de errores para cumplir el contrato de errorsMiddleware
+ - Patrón de DI inconsistente, reunificado todo para que el container se intancie bien el el route ( composition root) y los controller solo reciban lo que necesitan.
+
+
 🔴 Seguridad
-Severidad	Ubicación	Problema
 
-Media	src/infrastructure/config/env.ts:6	secret: process.env.JWT_SECRET || "devmind_dev_secret" — si no defines la variable, la app arranca igualmente firmando tokens con un secreto público hardcodeado, en vez de fallar rápido (throw si falta). Muy fácil de fugar a producción sin darte cuenta.
-Media	src/infrastructure/uploadZipAdapter/admZipExtractor.ts:16	Las rutas de las entradas del ZIP no se sanitizan contra path traversal (../../etc/passwd); solo se normalizan barras invertidas. Hoy no escribe a disco, pero si en el futuro alguna función vuelca esos path a filesystem, es una vulnerabilidad real.
-Media	package.json / src/app.ts	No hay helmet (cabeceras de seguridad) ni express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta.
-Baja	projectFileSchemas.ts	Sin .max() en content ni límite de tamaño de body en express.json() — depende del límite implícito de Express.
-✅ Verificado limpio	Los 4 repos Postgres	Todas las queries están parametrizadas — sin riesgo de inyección SQL.
-✅ Verificado limpio	.env	Correctamente en .gitignore, no committeado.
-✅ Verificado limpio	Autorización	ownerId/projectId se comprueba de forma consistente en todos los casos de uso.
+ - Alta: Establecer un limite de tamaño del ZIP subido y generar proteccion basica contra zip-bomb.
+ 
+ - Media: Si no se define la variable, la app arranca igualmente firmando tokens con un secreto público hardcodeado, en vez de fallar rápido. Arreglar eso.
+ 
+ - Media: No hay express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta. Solucionar eso instalando y aplicando con un middlware express-rate.limit.El middleware se desactiva automáticamente cuando NODE_ENV === "test" (Vitest lo pone así por defecto), para no romper la suite de integración que hace muchos registros/logins seguidos desde la misma IP.
 
 
 
-
-
-🔵 Pulido profesional (esto es lo que más va a notar un evaluador de TFM/entrevistador)
-El README está desactualizado y es engañoso: dice literalmente "Todavía no está implementada la indexación de código, embeddings ni RAG" y que los datos "se guardan en memoria", cuando el proyecto ya tiene Postgres, subida/sincronización de ZIP y generación de CodeChunks completos y commiteados (Fases 4, 5, 5.1, 6). Esto es lo primero que lee cualquiera que abra el repo.
-No hay instrucciones de instalación: falta npm install, docker-compose up, setup de .env, cómo correr migraciones.
-No hay CI (.github/workflows) pese a tener suite de tests y typecheck ya listos para engancharse.
-No hay LICENSE, aunque package.json declara "license": "ISC".
-docs/ tiene 4 markdowns grandes y solapados (hasta 104KB) sin ningún índice que diga cuál es el canónico/vigente — puede confundir a quien entra a mirar la documentación.
-
+🔵 Pulido del README.md
 
 
 

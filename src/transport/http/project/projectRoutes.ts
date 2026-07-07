@@ -6,6 +6,7 @@ import { authMiddleware } from "../../http/middleware/authMiddleware";
 import { validateBody } from "../../http/middleware/validateBodyMiddleware";
 import { asyncHandler } from "../../http/middleware/asyncHandler";
 import { container } from "../../../container/container";
+import { env } from "../../../infrastructure/config/env";
 
 import multer from "multer";
 
@@ -21,6 +22,9 @@ const projectController = new ProjectController(
 
 const upload = multer({
   storage: multer.memoryStorage(),
+  limits: {
+    fileSize: env.upload.maxZipSizeMb * 1024 * 1024,
+  },
 });
 
 projectRoutes.post(

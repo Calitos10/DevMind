@@ -2,6 +2,7 @@ import { Router } from "express";
 import { container } from "../../../container/container";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { authMiddleware } from "../middleware/authMiddleware";
+import { authRateLimitMiddleware } from "../middleware/authRateLimitMiddleware";
 import { validateBody } from "../middleware/validateBodyMiddleware";
 import { AuthController } from "./authController";
 import { loginSchema, registerSchema } from "./authSchema";
@@ -16,12 +17,14 @@ const authController = new AuthController(
 
 authRoutes.post(
   "/register",
+  authRateLimitMiddleware,
   validateBody(registerSchema),
   asyncHandler((req, res, next) => authController.register(req, res)),
 );
 
 authRoutes.post(
   "/login",
+  authRateLimitMiddleware,
   validateBody(loginSchema),
   asyncHandler((req, res, next) => authController.login(req, res)),
 );
