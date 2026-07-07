@@ -1,6 +1,6 @@
 import type { Project } from "../../domain/entities/project";
 import type { ProjectRepository } from "../../domain/repository/projectRepository";
-import { ProjectNotFoundError } from "../../shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type GetProjectByIdInput = {
   projectId: string;

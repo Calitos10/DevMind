@@ -5,7 +5,7 @@ import { ProjectRepository } from "../../domain/repository/projectRepository";
 import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
 import { IdGenerator } from "../../application/ports/idGeneratorPort";
 import { ZipExtractor } from "../../application/ports/zipExtractor";
-import { ProjectNotFoundError } from "../../shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { NoValidProjectFilesFoundError } from "../../shared/errors/noValidProjectFilesFoundError";
 
 type UploadProjectZipUseCaseInput = {

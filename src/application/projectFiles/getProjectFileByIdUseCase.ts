@@ -2,7 +2,7 @@ import { ProjectFile } from "../../domain/entities/projectFile";
 import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
 import { ProjectRepository } from "../../domain/repository/projectRepository";
 import { ProjectFileNotFoundError } from "../../shared/errors/projectFileNotFoundError";
-import { ProjectNotFoundError } from "../../shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type GetProjectFileByIdInput = {
   ownerId: string;

@@ -1,5 +1,5 @@
 import { UserRepository } from "../../domain/repository/userRepository";
-import { InvalidCredentialsError } from "../../shared/errors/invalid-credentials.error";
+import { InvalidCredentialsError } from "../../shared/errors/invalidCredentialsError";
 import { PasswordHasher } from "../ports/passwordHasherPort";
 import { TokenService } from "../ports/tokenService";
 

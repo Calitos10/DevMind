@@ -1,7 +1,7 @@
 import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
 import { ProjectRepository } from "../../domain/repository/projectRepository";
 import { ProjectFileNotFoundError } from "../../shared/errors/projectFileNotFoundError";
-import { ProjectNotFoundError } from "../../shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type DeleteProjectFileInput = {
   ownerId: string;

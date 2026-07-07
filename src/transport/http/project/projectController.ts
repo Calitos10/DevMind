@@ -1,13 +1,26 @@
 import type { Request, Response } from "express";
 
-import { container } from "../../../container/container";
 import type { AuthenticatedRequest } from "../types/authenticatedRequest";
+import { ZipFileRequiredError } from "../../../shared/errors/zipFileRequiredError";
+import { CreateProjectUseCase } from "../../../application/projects/createProjectUseCase";
+import { ListUserProjectsUseCase } from "../../../application/projects/listUserProjectsUseCase";
+import { GetProjectByIdUseCase } from "../../../application/projects/getProjectByIdUseCase";
+import { DeleteProjectUseCase } from "../../../application/projects/deleteProjectUseCase";
+import { UploadProjectZipUseCase } from "../../../application/uploadZip/uploadProjectZipUseCase";
 
 export class ProjectController {
+  constructor(
+    private readonly createProjectUseCase: CreateProjectUseCase,
+    private readonly listUserProjectsUseCase: ListUserProjectsUseCase,
+    private readonly getProjectByIdUseCase: GetProjectByIdUseCase,
+    private readonly deleteProjectUseCase: DeleteProjectUseCase,
+    private readonly uploadProjectZipUseCase: UploadProjectZipUseCase,
+  ) {}
+
   async create(req: Request, res: Response) {
     const authenticatedReq = req as AuthenticatedRequest;
 
-    const project = await container.createProjectUseCase.execute({
+    const project = await this.createProjectUseCase.execute({
       ownerId: authenticatedReq.user.userId,
       name: authenticatedReq.body.name,
       description: authenticatedReq.body.description,
@@ -18,7 +31,7 @@ export class ProjectController {
 
   async list(req: Request, res: Response) {
     const authenticatedReq = req as AuthenticatedRequest;
-    const projects = await container.listUserProjectsUseCase.execute({
+    const projects = await this.listUserProjectsUseCase.execute({
       ownerId: authenticatedReq.user.userId,
     });
 
@@ -27,7 +40,7 @@ export class ProjectController {
 
   async getById(req: Request, res: Response) {
     const authenticatedReq = req as AuthenticatedRequest;
-    const project = await container.getProjectByIdUseCase.execute({
+    const project = await this.getProjectByIdUseCase.execute({
       projectId: authenticatedReq.params.id as string,
       ownerId: authenticatedReq.user.userId,
     });
@@ -40,7 +53,7 @@ export class ProjectController {
 
     const projectId = authenticatedReq.params.id as string;
 
-    await container.deleteProjectUseCase.execute({
+    await this.deleteProjectUseCase.execute({
       projectId,
       ownerId: authenticatedReq.user.userId,
     });
@@ -52,12 +65,10 @@ export class ProjectController {
     const authenticatedReq = req as AuthenticatedRequest;
 
     if (!authenticatedReq.file) {
-      return res.status(400).json({
-        message: "Zip file is required",
-      });
+      throw new ZipFileRequiredError();
     }
 
-    const result = await container.uploadProjectZipUseCase.execute({
+    const result = await this.uploadProjectZipUseCase.execute({
       projectId: authenticatedReq.params.id as string,
       ownerId: authenticatedReq.user.userId,
       zipBuffer: authenticatedReq.file.buffer,

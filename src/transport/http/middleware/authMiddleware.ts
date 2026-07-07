@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { container } from "../../../container/container";
-import { UnauthorizedError } from "../../../shared/errors/unauthorized.error";
+import { UnauthorizedError } from "../../../shared/errors/unauthorizedError";
 import { AuthenticatedRequest } from "../types/authenticatedRequest";
 
 export const authMiddleware = async (

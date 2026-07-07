@@ -5,8 +5,14 @@ import { asyncHandler } from "../middleware/asyncHandler";
 import { validateBody } from "../middleware/validateBodyMiddleware";
 import { ProjectFileController } from "./projectFileController";
 import { projectFileSchema } from "./projectFileSchemas";
+import { container } from "../../../container/container";
 
-const projectFileController = new ProjectFileController();
+const projectFileController = new ProjectFileController(
+  container.createProjectFileUseCase,
+  container.listProjectFilesUseCase,
+  container.getProjectFileByIdUseCase,
+  container.deleteProjectFileUseCase,
+);
 
 export const projectFileRoutes = Router();
 

@@ -1,15 +1,25 @@
 import { Request, Response } from "express";
 
-import { container } from "../../../container/container";
 import { AuthenticatedRequest } from "../types/authenticatedRequest";
+import { CreateProjectFileUseCase } from "../../../application/projectFiles/createProjectFileUseCase";
+import { ListProjectFilesUseCase } from "../../../application/projectFiles/listProjectFilesUseCase";
+import { GetProjectFileByIdUseCase } from "../../../application/projectFiles/getProjectFileByIdUseCase";
+import { DeleteProjectFileUseCase } from "../../../application/projectFiles/deleteProjectFileUseCase";
 
 export class ProjectFileController {
+  constructor(
+    private readonly createProjectFileUseCase: CreateProjectFileUseCase,
+    private readonly listProjectFilesUseCase: ListProjectFilesUseCase,
+    private readonly getProjectFileByIdUseCase: GetProjectFileByIdUseCase,
+    private readonly deleteProjectFileUseCase: DeleteProjectFileUseCase,
+  ) {}
+
   async create(req: Request, res: Response) {
     const authenticatedReq = req as AuthenticatedRequest;
 
     const projectId = authenticatedReq.params.projectId as string;
 
-    const projectFile = await container.createProjectFileUseCase.execute({
+    const projectFile = await this.createProjectFileUseCase.execute({
       ownerId: authenticatedReq.user.userId,
       projectId,
       path: authenticatedReq.body.path,
@@ -25,7 +35,7 @@ export class ProjectFileController {
 
     const projectId = authenticatedReq.params.projectId as string;
 
-    const projectFiles = await container.listProjectFilesUseCase.execute({
+    const projectFiles = await this.listProjectFilesUseCase.execute({
       ownerId: authenticatedReq.user.userId,
       projectId,
     });
@@ -39,7 +49,7 @@ export class ProjectFileController {
     const projectId = authenticatedReq.params.projectId as string;
     const fileId = authenticatedReq.params.fileId as string;
 
-    const projectFile = await container.getProjectFileByIdUseCase.execute({
+    const projectFile = await this.getProjectFileByIdUseCase.execute({
       ownerId: authenticatedReq.user.userId,
       projectId,
       fileId,
@@ -54,7 +64,7 @@ export class ProjectFileController {
     const projectId = authenticatedReq.params.projectId as string;
     const fileId = authenticatedReq.params.fileId as string;
 
-    await container.deleteProjectFileUseCase.execute({
+    await this.deleteProjectFileUseCase.execute({
       ownerId: authenticatedReq.user.userId,
       projectId,
       fileId,

@@ -3534,3 +3534,116 @@ los archivos sin cambios conservan sus chunks.
 ```
 
 Esta fase deja el sistema preparado para la siguiente etapa del proyecto: embeddings y búsqueda semántica.
+
+
+
+
+
+# DevMind API — Resumen del proyecto (hasta Fase 6)
+
+## Qué es DevMind
+API backend (Node.js + TypeScript + Express) que permite a un usuario autenticado
+crear proyectos software, subir su código (vía ZIP) y, en fases futuras, consultarlo
+en lenguaje natural usando IA (RAG). La idea central: convertir un proyecto software
+en una fuente de conocimiento consultable, útil para devs nuevos, equipos con proyectos
+grandes o sin documentación actualizada.
+
+Arquitectura: Clean/Hexagonal — `domain` (entidades + interfaces de repositorio),
+`application` (casos de uso + puertos), `infrastructure` (adaptadores reales: Postgres,
+bcrypt, JWT, adm-zip...), `transport/http` (Express: routes, controllers, middlewares),
+`container` (inyección de dependencias manual). Metodología: TDD en dominio/aplicación,
+tests de integración HTTP con Supertest para la capa de transporte.
+
+Jerarquía de dominio actual:
+
+
+
+---
+
+## Fases completadas
+
+**Fase 0 — Setup inicial**
+Proyecto Node/TS/Express, Vitest+Supertest, estructura de carpetas limpia,
+`tsconfig`, `.env.example`, endpoint `/health`.
+
+**Fase 1 — Autenticación**
+`User`, `UserRepository`, casos de uso (`RegisterUserUseCase`, `LoginUserUseCase`,
+`GetCurrentUserUseCase`), adaptadores reales (`bcryptjs`, `jsonwebtoken`, `crypto.randomUUID`),
+endpoints `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `authMiddleware`,
+`errorMiddleware`, validación con Zod. Errores propios: `UserAlreadyExistsError`,
+`InvalidCredentialsError`, `UserNotFoundError`, `UnauthorizedError`.
+
+**Fase 2 — Proyectos persistentes**
+`Project`, `ProjectRepository`, CRUD de proyectos por usuario (`POST/GET/GET:id/DELETE:id /projects`).
+Regla clave: nunca buscar solo por `id`, siempre `projectId + ownerId` → un proyecto de otro
+usuario responde `404` (no `403`, para no revelar su existencia). `ProjectNotFoundError`.
+
+**Fase 3 — ProjectFiles básicos**
+`ProjectFile`, `ProjectFileRepository`, CRUD de archivos vía JSON (sin ZIP todavía):
+`POST/GET/GET:fileId/DELETE:fileId /projects/:projectId/files`. Cálculo de `size` y `hash`.
+Misma regla de seguridad por ownership. `ProjectFileNotFoundError`.
+
+**Fase 4 — PostgreSQL**
+Se sustituyen los repositorios en memoria por `PostgresUserRepository`,
+`PostgresProjectRepository`, `PostgresProjectFileRepository` (Docker Compose, `postgresPool`,
+migraciones SQL con `ON DELETE CASCADE`). Se crea `devmind_test_db` separada para tests,
+con `globalSetup` que limpia tablas antes/después de cada run.
+
+**Fase 5 — Subida de ZIP**
+Nuevo endpoint `POST /projects/:projectId/upload` (multipart/form-data, campo `file`).
+`UploadProjectZipUseCase` coordina: `multer` recibe el ZIP → puerto `ZipExtractor`
+(implementación real `AdmZipExtractor`) lo extrae → se ignoran carpetas inútiles
+(`node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`) → se crean `ProjectFile`.
+Si no queda ningún archivo válido → `NoValidProjectFilesFoundError` (400). Sin archivo
+adjunto → 400 `"Zip file is required"`.
+
+**Fase 5.1 — Sincronización por path + hash**
+Evita duplicados al resubir el mismo ZIP. Compara los archivos entrantes con los existentes
+por `path`, y por `hash` decide si están sin cambios. Comportamiento:
+- nuevo → **created**
+- mismo path, hash distinto → **updated** (nuevo método `update()` en `ProjectFileRepository`)
+- mismo path, mismo hash → **unchanged** (no se toca)
+- existía en BD pero ya no está en el ZIP → **deleted**
+
+Caso especial: archivo movido de carpeta = mismo hash pero distinto path → se interpreta como
+`deleted` (ruta vieja) + `created` (ruta nueva); válido para el objetivo actual.
+
+Contrato de respuesta actualizado a:
+```
+{
+  "projectId": "...",
+  "summary": { "created": 0, "updated": 0, "deleted": 0, "unchanged": 0 },
+  "files": { "created": [], "updated": [], "deleted": [], "unchanged": [] }
+}
+```
+
+**Fase 6 — CodeChunks**
+
+Nueva entidad CodeChunk (id, projectId, projectFileId, content, startLine, endLine, index, createdAt)
+y CodeChunkRepository (saveMany, findByProjectFileId, deleteByProjectFileId).
+LineCodeChunker: trocea el contenido de un archivo por líneas, con maxLinesPerChunk y
+overlapLines configurables; devuelve [] si el contenido está vacío; protegido contra
+configuraciones inválidas (overlap ≥ maxLines). GenerateCodeChunksForProjectFileUseCase:
+borra chunks antiguos del archivo, genera los nuevos fragmentos y los persiste.
+
+Integrado en la subida/resubida de ZIP:
+
+created / updated → (re)genera chunks
+unchanged → no toca chunks
+deleted → el ProjectFile se borra y sus chunks caen por ON DELETE CASCADE
+Persistencia real en Postgres: migración 004_create_code_chunks.sql +
+PostgresCodeChunkRepository, con test específico de borrado en cascada.
+Verificado también con test de integración HTTP end-to-end sobre POST /projects/:id/upload.
+
+**Estado actual**
+
+Todo lo anterior está commiteado y el árbol de trabajo está limpio. docs/openapi.yaml
+está al día con el contrato real (incluye summary/files agrupados y una nota sobre
+la indexación en chunks como efecto secundario interno sin cambiar la respuesta HTTP).
+
+Siguiente paso lógico: Fase 7 — Embeddings + búsqueda semántica
+Generar embeddings de cada CodeChunk y poder buscar los chunks más relevantes para una
+consulta en lenguaje natural. Esto es el paso previo imprescindible antes de la Fase 8 (IA/RAG),
+donde ya se podrán responder preguntas sobre el proyecto usando esos chunks recuperados.
+
+

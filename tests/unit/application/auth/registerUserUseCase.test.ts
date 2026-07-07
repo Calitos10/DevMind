@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { RegisterUserUseCase } from "../../../../src/application/auth/registerUserUseCase";
-import { UserAlreadyExistsError } from "../../../../src/shared/errors/user-already-exists.error";
+import { UserAlreadyExistsError } from "../../../../src/shared/errors/userAlreadyExistsError";
 import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
 import { FakePasswordHasher } from "../../../fakes/fakePasswordHasher";
 import { FakeUserRepository } from "../../../fakes/fakeUserRepository";

@@ -2,7 +2,7 @@ import { User } from "../../domain/entities/user";
 import { UserRepository } from "../../domain/repository/userRepository";
 import { IdGenerator } from "../ports/idGeneratorPort";
 import { PasswordHasher } from "../ports/passwordHasherPort";
-import { UserAlreadyExistsError } from "../../shared/errors/user-already-exists.error";
+import { UserAlreadyExistsError } from "../../shared/errors/userAlreadyExistsError";
 
 type RegisterUserInput = {
   name: string;

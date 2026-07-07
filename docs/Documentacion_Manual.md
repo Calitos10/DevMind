@@ -2325,3 +2325,40 @@ Cada vez que se sube o resube un ZIP:
 - los archivos sin cambios conservan sus chunks.
 
 Esto prepara el sistema para la siguiente fase: embeddings y búsqueda semántica.
+
+
+
+
+----------------------------------
+
+🔴 Seguridad
+Severidad	Ubicación	Problema
+
+Media	src/infrastructure/config/env.ts:6	secret: process.env.JWT_SECRET || "devmind_dev_secret" — si no defines la variable, la app arranca igualmente firmando tokens con un secreto público hardcodeado, en vez de fallar rápido (throw si falta). Muy fácil de fugar a producción sin darte cuenta.
+Media	src/infrastructure/uploadZipAdapter/admZipExtractor.ts:16	Las rutas de las entradas del ZIP no se sanitizan contra path traversal (../../etc/passwd); solo se normalizan barras invertidas. Hoy no escribe a disco, pero si en el futuro alguna función vuelca esos path a filesystem, es una vulnerabilidad real.
+Media	package.json / src/app.ts	No hay helmet (cabeceras de seguridad) ni express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta.
+Baja	projectFileSchemas.ts	Sin .max() en content ni límite de tamaño de body en express.json() — depende del límite implícito de Express.
+✅ Verificado limpio	Los 4 repos Postgres	Todas las queries están parametrizadas — sin riesgo de inyección SQL.
+✅ Verificado limpio	.env	Correctamente en .gitignore, no committeado.
+✅ Verificado limpio	Autorización	ownerId/projectId se comprueba de forma consistente en todos los casos de uso.
+
+
+
+
+
+🔵 Pulido profesional (esto es lo que más va a notar un evaluador de TFM/entrevistador)
+El README está desactualizado y es engañoso: dice literalmente "Todavía no está implementada la indexación de código, embeddings ni RAG" y que los datos "se guardan en memoria", cuando el proyecto ya tiene Postgres, subida/sincronización de ZIP y generación de CodeChunks completos y commiteados (Fases 4, 5, 5.1, 6). Esto es lo primero que lee cualquiera que abra el repo.
+No hay instrucciones de instalación: falta npm install, docker-compose up, setup de .env, cómo correr migraciones.
+No hay CI (.github/workflows) pese a tener suite de tests y typecheck ya listos para engancharse.
+No hay LICENSE, aunque package.json declara "license": "ISC".
+docs/ tiene 4 markdowns grandes y solapados (hasta 104KB) sin ningún índice que diga cuál es el canónico/vigente — puede confundir a quien entra a mirar la documentación.
+
+
+
+
+⚪ Dependencias
+No hay helmet, express-rate-limit, eslint ni prettier en package.json.
+package-lock.json está commiteado — bien.
+Clasificación dependencies/devDependencies correcta.
+No se detectaron dependencias obviamente sin usar.
+Prioridad si tuviera que elegir 3 cosas antes de enseñar esto en una entrevista: (1) actualizar el README, (2) limitar tamaño del ZIP en multer, (3) hacer fallar el arranque si falta JWT_SECRET en vez de usar un valor por defecto. Dime cuáles quieres que aborde y en qué orden.

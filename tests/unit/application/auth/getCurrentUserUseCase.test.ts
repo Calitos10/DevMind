@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GetCurrentUserUseCase } from "../../../../src/application/auth/getCurrentUserUseCase";
 import { User } from "../../../../src/domain/entities/user";
 import { UserRepository } from "../../../../src/domain/repository/userRepository";
-import { UserNotFoundError } from "../../../../src/shared/errors/user-not-found.error";
+import { UserNotFoundError } from "../../../../src/shared/errors/userNotFoundError";
 
 class InMemoryUserRepository implements UserRepository {
   public users: User[] = [];

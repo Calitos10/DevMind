@@ -6,7 +6,7 @@ import {
   TokenService,
 } from "../../../../src/application/ports/tokenService";
 import { User } from "../../../../src/domain/entities/user";
-import { InvalidCredentialsError } from "../../../../src/shared/errors/invalid-credentials.error";
+import { InvalidCredentialsError } from "../../../../src/shared/errors/invalidCredentialsError";
 import { FakePasswordHasher } from "../../../fakes/fakePasswordHasher";
 import { FakeUserRepository } from "../../../fakes/fakeUserRepository";
 

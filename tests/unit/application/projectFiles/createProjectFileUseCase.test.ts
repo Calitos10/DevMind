@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CreateProjectFileUseCase } from "../../../../src/application/projectFiles/createProjectFileUseCase";
 import { FileHashGenerator } from "../../../../src/application/ports/fileHashGeneratorPort";
 import { Project } from "../../../../src/domain/entities/project";
-import { ProjectNotFoundError } from "../../../../src/shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../../../src/shared/errors/projectNotFoundError";
 import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
 import { FakeProjectFileRepository } from "../../../fakes/fakeProjectFileRepository";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";

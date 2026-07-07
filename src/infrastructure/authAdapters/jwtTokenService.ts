@@ -1,6 +1,6 @@
 import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
 import { TokenPayload, TokenService } from "../../application/ports/tokenService";
-import { UnauthorizedError } from "../../shared/errors/unauthorized.error";
+import { UnauthorizedError } from "../../shared/errors/unauthorizedError";
 import { env } from "../config/env";
 
 export class JwtTokenService implements TokenService {

@@ -1,5 +1,5 @@
 import { UserRepository } from "../../domain/repository/userRepository";
-import { UserNotFoundError } from "../../shared/errors/user-not-found.error";
+import { UserNotFoundError } from "../../shared/errors/userNotFoundError";
 
 type GetCurrentUserInput = {
   userId: string;

@@ -5,12 +5,19 @@ import { projectSchema } from "./projectSchemas";
 import { authMiddleware } from "../../http/middleware/authMiddleware";
 import { validateBody } from "../../http/middleware/validateBodyMiddleware";
 import { asyncHandler } from "../../http/middleware/asyncHandler";
+import { container } from "../../../container/container";
 
 import multer from "multer";
 
 export const projectRoutes = Router();
 
-const projectController = new ProjectController();
+const projectController = new ProjectController(
+  container.createProjectUseCase,
+  container.listUserProjectsUseCase,
+  container.getProjectByIdUseCase,
+  container.deleteProjectUseCase,
+  container.uploadProjectZipUseCase,
+);
 
 const upload = multer({
   storage: multer.memoryStorage(),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { JwtTokenService } from "../../../../src/infrastructure/authAdapters/jwtTokenService";
-import { UnauthorizedError } from "../../../../src/shared/errors/unauthorized.error";
+import { UnauthorizedError } from "../../../../src/shared/errors/unauthorizedError";
 
 describe("JwtTokenService", () => {
   it("should sign and verify a token", async () => {

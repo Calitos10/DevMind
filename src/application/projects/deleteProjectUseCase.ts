@@ -1,5 +1,5 @@
 import type { ProjectRepository } from "../../domain/repository/projectRepository";
-import { ProjectNotFoundError } from "../../shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type DeleteProjectInput = {
   projectId: string;

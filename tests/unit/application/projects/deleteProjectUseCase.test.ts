@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { DeleteProjectUseCase } from "../../../../src/application/projects/deleteProjectUseCase";
-import { ProjectNotFoundError } from "../../../../src/shared/errors/project-not-found.error";
+import { ProjectNotFoundError } from "../../../../src/shared/errors/projectNotFoundError";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
 
 describe("DeleteProjectUseCase", () => {
