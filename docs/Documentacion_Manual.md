@@ -2352,14 +2352,8 @@ En esta fase vamos a realizar un analisis de busqueda probelmas, insconsistencia
  - Media: No hay express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta. Solucionar eso instalando y aplicando con un middlware express-rate.limit.El middleware se desactiva automáticamente cuando NODE_ENV === "test" (Vitest lo pone así por defecto), para no romper la suite de integración que hace muchos registros/logins seguidos desde la misma IP.
 
 
-
 🔵 Pulido del README.md
 
 
 
-⚪ Dependencias
-No hay helmet, express-rate-limit, eslint ni prettier en package.json.
-package-lock.json está commiteado — bien.
-Clasificación dependencies/devDependencies correcta.
-No se detectaron dependencias obviamente sin usar.
-Prioridad si tuviera que elegir 3 cosas antes de enseñar esto en una entrevista: (1) actualizar el README, (2) limitar tamaño del ZIP en multer, (3) hacer fallar el arranque si falta JWT_SECRET en vez de usar un valor por defecto. Dime cuáles quieres que aborde y en qué orden.
+

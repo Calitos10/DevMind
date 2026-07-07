@@ -8,6 +8,59 @@ En fases futuras, DevMind usará técnicas de RAG para responder usando el códi
 
 ---
 
+## Instalación / Puesta en marcha
+
+### Requisitos
+
+```txt
+Node.js 20+
+Docker (para levantar PostgreSQL)
+```
+
+### Pasos
+
+```bash
+# 1. Instalar dependencias
+npm install
+
+# 2. Copiar el fichero de variables de entorno y ajustar los valores
+cp .env.example .env
+```
+
+Variables clave en `.env`:
+
+```txt
+JWT_SECRET                     — obligatorio, la app no arranca sin ella
+DATABASE_URL                   — cadena de conexión a PostgreSQL
+MAX_ZIP_SIZE_MB                — tamaño máximo del ZIP subido (default 20)
+MAX_ZIP_UNCOMPRESSED_SIZE_MB   — tamaño máximo descomprimido, protección anti zip-bomb (default 200)
+AUTH_RATE_LIMIT_MAX            — intentos permitidos en /auth/register y /auth/login (default 10)
+AUTH_RATE_LIMIT_WINDOW_MINUTES — ventana de tiempo del límite anterior (default 15)
+```
+
+```bash
+# 3. Levantar PostgreSQL con Docker
+docker-compose up -d
+
+# 4. Ejecutar las migraciones (crea las tablas users, projects, project_files, code_chunks)
+npx tsx scripts/run-migrations.ts
+
+# 5. Arrancar el servidor en modo desarrollo
+npm run dev
+```
+
+La API queda disponible en `http://localhost:3000` (o el `PORT` configurado).
+
+### Ejecutar los tests
+
+```bash
+npm test
+```
+
+Los tests de integración usan su propia base de datos (`devmind_test_db`, definida en el propio script `test` de `package.json`) y limpian las tablas automáticamente antes y después de cada ejecución — no afectan a los datos de `devmind_db`.
+
+---
+
 ## Problema que resuelve
 
 Entender un proyecto software existente puede ser lento porque el conocimiento técnico suele estar disperso entre:
@@ -38,13 +91,17 @@ Explícame la arquitectura de carpetas.
 Actualmente el proyecto tiene implementadas las siguientes fases:
 
 ```txt
-Fase 0 — Base técnica de la API ✅
-Fase 1 — Autenticación de usuarios ✅
-Fase 2 — Gestión de proyectos ✅
-Fase 3 — Project Files ✅
+Fase 0   — Base técnica de la API ✅
+Fase 1   — Autenticación de usuarios ✅
+Fase 2   — Gestión de proyectos ✅
+Fase 3   — Project Files ✅
+Fase 4   — Persistencia en PostgreSQL ✅
+Fase 5   — Subida de proyectos comprimidos en ZIP ✅
+Fase 5.1 — Sincronización de archivos por path y hash (create/update/delete/unchanged) ✅
+Fase 6   — CodeChunks: troceado de archivos preparado para RAG ✅
 ```
 
-Todavía no está implementada la indexación de código, embeddings ni RAG. Eso vendrá en fases posteriores.
+Todavía no están implementados los embeddings ni la búsqueda semántica/RAG. Eso vendrá en fases posteriores (ver "Próximas fases previstas").
 
 ---
 
@@ -117,14 +174,15 @@ Ejemplos:
 BcryptPasswordHasher
 JwtTokenService
 CryptoIdGenerator
-InMemoryUserRepository
-InMemoryProjectRepository
-InMemoryProjectFileRepository
+PostgresUserRepository
+PostgresProjectRepository
+PostgresProjectFileRepository
+PostgresCodeChunkRepository
+AdmZipExtractor
+LineCodeChunker
 ```
 
-Actualmente los datos se guardan en memoria. Esto significa que al reiniciar el servidor se pierden los usuarios y proyectos creados.
-
-Más adelante se sustituirá por PostgreSQL.
+Los datos se guardan en PostgreSQL, así que los usuarios, proyectos, archivos y chunks persisten entre reinicios del servidor.
 
 ### `transport`
 
@@ -162,9 +220,10 @@ Se encarga de conectar casos de uso con sus implementaciones reales.
 Ejemplo:
 
 ```txt
-RegisterUserUseCase → InMemoryUserRepository + BcryptPasswordHasher + CryptoIdGenerator
-CreateProjectUseCase → InMemoryProjectRepository + CryptoIdGenerator
-CreateProjectFileUseCase → InMemoryProjectRepository + InMemoryProjectFileRepository + CryptoIdGenerator
+RegisterUserUseCase → PostgresUserRepository + BcryptPasswordHasher + CryptoIdGenerator
+CreateProjectUseCase → PostgresProjectRepository + CryptoIdGenerator
+CreateProjectFileUseCase → PostgresProjectRepository + PostgresProjectFileRepository + CryptoIdGenerator
+UploadProjectZipUseCase → PostgresProjectRepository + PostgresProjectFileRepository + AdmZipExtractor + GenerateCodeChunksForProjectFileUseCase
 ```
 
 ### `shared`
@@ -192,20 +251,23 @@ El proyecto usa actualmente:
 Node.js
 TypeScript
 Express
+PostgreSQL
+Docker
 Vitest
 Supertest
 Zod
 JWT
 bcryptjs
+multer
+adm-zip
+express-rate-limit
 ```
 
 Stack previsto para fases futuras:
 
 ```txt
-PostgreSQL
 pgvector
 Genkit
-Docker
 RAG
 Embeddings
 ```
@@ -399,14 +461,14 @@ User
  └── Project
 ```
 
-Relación futura:
+Relación completa (con las fases ya implementadas):
 
 ```txt
 User
  └── Project
       └── ProjectFile
-           └── CodeChunk
-                └── Embedding
+           └── CodeChunk        ✅ implementado (Fase 6)
+                └── Embedding   ⏳ próxima fase
 ```
 
 ---
@@ -763,6 +825,73 @@ Posibles errores:
 
 ---
 
+## Upload ZIP
+
+Las Fases 5 y 5.1 implementan la subida de un proyecto completo comprimido en ZIP, con sincronización por `path` y `hash` contra los archivos ya existentes.
+
+Cada archivo creado o actualizado se trocea automáticamente en `CodeChunk` (Fase 6), preparado para las futuras fases de embeddings y RAG.
+
+### Subir/sincronizar un proyecto vía ZIP
+
+```txt
+POST /projects/:id/upload
+```
+
+Header requerido:
+
+```txt
+Authorization: Bearer ACCESS_TOKEN
+```
+
+Body (`multipart/form-data`):
+
+```txt
+file — archivo .zip del proyecto
+```
+
+Se ignoran automáticamente las carpetas: `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`.
+
+Respuesta esperada:
+
+```json
+{
+  "projectId": "project-id",
+  "summary": {
+    "created": 2,
+    "updated": 1,
+    "deleted": 1,
+    "unchanged": 5
+  },
+  "files": {
+    "created": [],
+    "updated": [],
+    "deleted": [],
+    "unchanged": []
+  }
+}
+```
+
+Reglas de sincronización:
+
+```txt
+archivo nuevo                              → created
+mismo path, hash distinto                  → updated
+mismo path, mismo hash                     → unchanged (no se toca)
+existía en BD pero ya no viene en el ZIP   → deleted
+```
+
+Posibles errores:
+
+```txt
+400 Bad Request — no se adjuntó ningún archivo
+400 Bad Request — el ZIP no contiene archivos válidos tras filtrar carpetas ignoradas
+400 Bad Request — el ZIP supera MAX_ZIP_SIZE_MB o MAX_ZIP_UNCOMPRESSED_SIZE_MB
+401 Unauthorized — token ausente o inválido
+404 Not Found — el proyecto no existe o no pertenece al usuario autenticado
+```
+
+---
+
 ## Tests
 
 El proyecto usa Vitest y Supertest.
@@ -893,10 +1022,10 @@ Los errores técnicos inesperados se manejan como errores internos del servidor.
 
 ### Fase futura — RAG sobre código
 
-Más adelante DevMind permitirá:
+El troceado de archivos en `CodeChunk` (Fase 6) ya está implementado. Más adelante DevMind permitirá:
 
 ```txt
-1. Dividir archivos en chunks.
+1. Dividir archivos en chunks. ✅ (Fase 6)
 2. Generar embeddings.
 3. Guardar embeddings en PostgreSQL con pgvector.
 4. Buscar chunks relevantes según la pregunta del usuario.
