@@ -44,22 +44,22 @@ Esto deja claro que DevMind no es solo un CRUD, sino una herramienta para entend
 
 ## 2. Roadmap general del proyecto
 
-| Fase    | Nombre                                 | Descripción                                                                                            |
-| ------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Fase 0  | Setup inicial                          | Crear la base del proyecto, dependencias, configuración, estructura y primer endpoint de salud.        |
-| Fase 1  | Autenticación                          | Registro, login, JWT, bcrypt, middleware de autenticación, endpoint `/auth/me` y tests con TDD.        |
-| Fase 2  | Proyectos persistentes                 | Permitir que usuarios autenticados creen, listen, consulten y borren sus propios proyectos.            |
-| Fase 3  | Subida de archivos básica              | Añadir archivos dentro de proyectos mediante JSON, todavía sin ZIP.                                    |
-| Fase 4  | PostgreSQL                             | Pasar usuarios, proyectos y `ProjectFiles` a una base de datos real.                                   |
-| Fase 5  | Subida de ZIP                          | Subir ZIP, descomprimir, recorrer carpetas, filtrar archivos inútiles y guardar muchos `ProjectFiles`. |
-| Fase 5.1  | Resubida / actualización de proyecto   | Sincronización de archivos por path y hashnuevos.                                      |
-| Fase 6  | Chunks                                 | Trocear `ProjectFiles` en fragmentos preparados para RAG.                                              |
-| Fase 7  | Embeddings + búsqueda semántica        | Generar embeddings y buscar chunks relevantes.                                                         |
-| Fase 8  | IA / RAG                               | Responder preguntas usando los chunks del proyecto.                                                    |
-| Fase 9 | Historial                              | Añadir historial de conversaciones o consultas.                                                        |
-| Fase 10 | Funciones inteligentes                 | Incorporar funcionalidades inteligentes adicionales.                                                   |
-| Fase 11 | Modo invitado / demo sin registro      | Permitir probar DevMind sin crear cuenta.                                                              |
-| Fase 12 | Onboarding visual / presentación final | Preparar la presentación final del proyecto.                                                           |
+| Fase     | Nombre                                 | Descripción                                                                                            |
+| -------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Fase 0   | Setup inicial                          | Crear la base del proyecto, dependencias, configuración, estructura y primer endpoint de salud.        |
+| Fase 1   | Autenticación                          | Registro, login, JWT, bcrypt, middleware de autenticación, endpoint `/auth/me` y tests con TDD.        |
+| Fase 2   | Proyectos persistentes                 | Permitir que usuarios autenticados creen, listen, consulten y borren sus propios proyectos.            |
+| Fase 3   | Subida de archivos básica              | Añadir archivos dentro de proyectos mediante JSON, todavía sin ZIP.                                    |
+| Fase 4   | PostgreSQL                             | Pasar usuarios, proyectos y `ProjectFiles` a una base de datos real.                                   |
+| Fase 5   | Subida de ZIP                          | Subir ZIP, descomprimir, recorrer carpetas, filtrar archivos inútiles y guardar muchos `ProjectFiles`. |
+| Fase 5.1 | Resubida / actualización de proyecto   | Sincronización de archivos por path y hashnuevos.                                                      |
+| Fase 6   | Chunks                                 | Trocear `ProjectFiles` en fragmentos preparados para RAG.                                              |
+| Fase 7   | Embeddings + búsqueda semántica        | Generar embeddings y buscar chunks relevantes.                                                         |
+| Fase 8   | IA / RAG                               | Responder preguntas usando los chunks del proyecto.                                                    |
+| Fase 9   | Historial                              | Añadir historial de conversaciones o consultas.                                                        |
+| Fase 10  | Funciones inteligentes                 | Incorporar funcionalidades inteligentes adicionales.                                                   |
+| Fase 11  | Modo invitado / demo sin registro      | Permitir probar DevMind sin crear cuenta.                                                              |
+| Fase 12  | Onboarding visual / presentación final | Preparar la presentación final del proyecto.                                                           |
 
 ---
 
@@ -472,7 +472,6 @@ Con esto queda conectada la capa de aplicación de proyectos al container.
 
 ---
 
-
 ### 11.8. Estrategia de testing
 
 El proyecto aplica una estrategia de TDD.
@@ -520,8 +519,6 @@ La idea principal es:
 | Pendiente | `DELETE /projects/:id` inexistente -> 404                       |
 | Pendiente | `DELETE /projects/:id` de otro usuario -> 404                   |
 
-
-
 ## 15. Casos de uso de proyectos
 
 ### 15.1. `CreateProjectUseCase`
@@ -534,7 +531,6 @@ Primero se crea lo necesario en `domain` para definir la logica y/o atributo que
 - El repositorio `ProjectRepository`.
 
 AHora, se empieza creando primero el test. El test falla porque todavía no están creados los imports necesarios.
-
 
 Luego se crea en `application`:
 
@@ -625,7 +621,6 @@ Y debe hacer:
 3. Si existe, borrarlo.
 
 Primero se crea el test unitario, que falla porque todavía no está implementado. Después se implementa el caso de uso y los tests pasan.
-
 
 ## 16. Implementación HTTP de proyectos
 
@@ -2447,7 +2442,6 @@ Pero ahora los `ProjectFile` ya no tienen que crearse solo manualmente uno a uno
 
 Esta fase deja preparado el proyecto para continuar con funcionalidades más avanzadas, como la resubida o actualización de proyectos, el troceado de archivos en chunks y las fases posteriores de búsqueda semántica e IA/RAG.
 
-
 ## Fase 5.1 — Sincronización de archivos por path y hash
 
 ### Objetivo de la subfase
@@ -3074,14 +3068,14 @@ export type CodeChunk = {
 
 Cada `CodeChunk` guarda:
 
-* su propio identificador;
-* el proyecto al que pertenece;
-* el archivo del que viene;
-* el contenido del fragmento;
-* la línea inicial;
-* la línea final;
-* el índice del chunk dentro del archivo;
-* la fecha de creación.
+- su propio identificador;
+- el proyecto al que pertenece;
+- el archivo del que viene;
+- el contenido del fragmento;
+- la línea inicial;
+- la línea final;
+- el índice del chunk dentro del archivo;
+- la fecha de creación.
 
 También se guarda `projectId`, aunque podría deducirse desde `ProjectFile`.
 
@@ -3105,9 +3099,9 @@ export interface CodeChunkRepository {
 
 De momento, el repositorio solo necesita estas operaciones básicas:
 
-* guardar varios chunks;
-* buscar chunks por archivo;
-* borrar chunks de un archivo.
+- guardar varios chunks;
+- buscar chunks por archivo;
+- borrar chunks de un archivo.
 
 Más adelante, cuando lleguen los embeddings, se podrán añadir métodos más avanzados, como búsquedas de chunks similares por proyecto.
 
@@ -3535,115 +3529,23 @@ los archivos sin cambios conservan sus chunks.
 
 Esta fase deja el sistema preparado para la siguiente etapa del proyecto: embeddings y búsqueda semántica.
 
+##  FASE 6.1
 
+En esta fase vamos a realizar un analisis de busqueda probelmas, insconsistencias y seguirdad:
 
+🟡 Inconsistencias:
 
+- Naming de errores que mezcclava dos conevnciones
+- Genracion de tipos de errores para cumplir el contrato de errorsMiddleware
+- Patrón de DI inconsistente, reunificado todo para que el container se intancie bien el el route ( composition root) y los controller solo reciban lo que necesitan.
 
-# DevMind API — Resumen del proyecto (hasta Fase 6)
+🔴 Seguridad
 
-## Qué es DevMind
-API backend (Node.js + TypeScript + Express) que permite a un usuario autenticado
-crear proyectos software, subir su código (vía ZIP) y, en fases futuras, consultarlo
-en lenguaje natural usando IA (RAG). La idea central: convertir un proyecto software
-en una fuente de conocimiento consultable, útil para devs nuevos, equipos con proyectos
-grandes o sin documentación actualizada.
+- Alta: Establecer un limite de tamaño del ZIP subido y generar proteccion basica contra zip-bomb.
 
-Arquitectura: Clean/Hexagonal — `domain` (entidades + interfaces de repositorio),
-`application` (casos de uso + puertos), `infrastructure` (adaptadores reales: Postgres,
-bcrypt, JWT, adm-zip...), `transport/http` (Express: routes, controllers, middlewares),
-`container` (inyección de dependencias manual). Metodología: TDD en dominio/aplicación,
-tests de integración HTTP con Supertest para la capa de transporte.
+- Media: Si no se define la variable, la app arranca igualmente firmando tokens con un secreto público hardcodeado, en vez de fallar rápido. Arreglar eso.
 
-Jerarquía de dominio actual:
+- Media: No hay express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta. Solucionar eso instalando y aplicando con un middlware express-rate.limit.El middleware se desactiva automáticamente cuando NODE_ENV === "test" (Vitest lo pone así por defecto), para no romper la suite de integración que hace muchos registros/logins seguidos desde la misma IP.
 
-
-
----
-
-## Fases completadas
-
-**Fase 0 — Setup inicial**
-Proyecto Node/TS/Express, Vitest+Supertest, estructura de carpetas limpia,
-`tsconfig`, `.env.example`, endpoint `/health`.
-
-**Fase 1 — Autenticación**
-`User`, `UserRepository`, casos de uso (`RegisterUserUseCase`, `LoginUserUseCase`,
-`GetCurrentUserUseCase`), adaptadores reales (`bcryptjs`, `jsonwebtoken`, `crypto.randomUUID`),
-endpoints `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `authMiddleware`,
-`errorMiddleware`, validación con Zod. Errores propios: `UserAlreadyExistsError`,
-`InvalidCredentialsError`, `UserNotFoundError`, `UnauthorizedError`.
-
-**Fase 2 — Proyectos persistentes**
-`Project`, `ProjectRepository`, CRUD de proyectos por usuario (`POST/GET/GET:id/DELETE:id /projects`).
-Regla clave: nunca buscar solo por `id`, siempre `projectId + ownerId` → un proyecto de otro
-usuario responde `404` (no `403`, para no revelar su existencia). `ProjectNotFoundError`.
-
-**Fase 3 — ProjectFiles básicos**
-`ProjectFile`, `ProjectFileRepository`, CRUD de archivos vía JSON (sin ZIP todavía):
-`POST/GET/GET:fileId/DELETE:fileId /projects/:projectId/files`. Cálculo de `size` y `hash`.
-Misma regla de seguridad por ownership. `ProjectFileNotFoundError`.
-
-**Fase 4 — PostgreSQL**
-Se sustituyen los repositorios en memoria por `PostgresUserRepository`,
-`PostgresProjectRepository`, `PostgresProjectFileRepository` (Docker Compose, `postgresPool`,
-migraciones SQL con `ON DELETE CASCADE`). Se crea `devmind_test_db` separada para tests,
-con `globalSetup` que limpia tablas antes/después de cada run.
-
-**Fase 5 — Subida de ZIP**
-Nuevo endpoint `POST /projects/:projectId/upload` (multipart/form-data, campo `file`).
-`UploadProjectZipUseCase` coordina: `multer` recibe el ZIP → puerto `ZipExtractor`
-(implementación real `AdmZipExtractor`) lo extrae → se ignoran carpetas inútiles
-(`node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`) → se crean `ProjectFile`.
-Si no queda ningún archivo válido → `NoValidProjectFilesFoundError` (400). Sin archivo
-adjunto → 400 `"Zip file is required"`.
-
-**Fase 5.1 — Sincronización por path + hash**
-Evita duplicados al resubir el mismo ZIP. Compara los archivos entrantes con los existentes
-por `path`, y por `hash` decide si están sin cambios. Comportamiento:
-- nuevo → **created**
-- mismo path, hash distinto → **updated** (nuevo método `update()` en `ProjectFileRepository`)
-- mismo path, mismo hash → **unchanged** (no se toca)
-- existía en BD pero ya no está en el ZIP → **deleted**
-
-Caso especial: archivo movido de carpeta = mismo hash pero distinto path → se interpreta como
-`deleted` (ruta vieja) + `created` (ruta nueva); válido para el objetivo actual.
-
-Contrato de respuesta actualizado a:
-```
-{
-  "projectId": "...",
-  "summary": { "created": 0, "updated": 0, "deleted": 0, "unchanged": 0 },
-  "files": { "created": [], "updated": [], "deleted": [], "unchanged": [] }
-}
-```
-
-**Fase 6 — CodeChunks**
-
-Nueva entidad CodeChunk (id, projectId, projectFileId, content, startLine, endLine, index, createdAt)
-y CodeChunkRepository (saveMany, findByProjectFileId, deleteByProjectFileId).
-LineCodeChunker: trocea el contenido de un archivo por líneas, con maxLinesPerChunk y
-overlapLines configurables; devuelve [] si el contenido está vacío; protegido contra
-configuraciones inválidas (overlap ≥ maxLines). GenerateCodeChunksForProjectFileUseCase:
-borra chunks antiguos del archivo, genera los nuevos fragmentos y los persiste.
-
-Integrado en la subida/resubida de ZIP:
-
-created / updated → (re)genera chunks
-unchanged → no toca chunks
-deleted → el ProjectFile se borra y sus chunks caen por ON DELETE CASCADE
-Persistencia real en Postgres: migración 004_create_code_chunks.sql +
-PostgresCodeChunkRepository, con test específico de borrado en cascada.
-Verificado también con test de integración HTTP end-to-end sobre POST /projects/:id/upload.
-
-**Estado actual**
-
-Todo lo anterior está commiteado y el árbol de trabajo está limpio. docs/openapi.yaml
-está al día con el contrato real (incluye summary/files agrupados y una nota sobre
-la indexación en chunks como efecto secundario interno sin cambiar la respuesta HTTP).
-
-Siguiente paso lógico: Fase 7 — Embeddings + búsqueda semántica
-Generar embeddings de cada CodeChunk y poder buscar los chunks más relevantes para una
-consulta en lenguaje natural. Esto es el paso previo imprescindible antes de la Fase 8 (IA/RAG),
-donde ya se podrán responder preguntas sobre el proyecto usando esos chunks recuperados.
-
+🔵 Pulido del README.md
 

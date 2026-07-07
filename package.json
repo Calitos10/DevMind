@@ -18,12 +18,15 @@
     "test:watch": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest"
   },
   "dependencies": {
+    "@genkit-ai/anthropic": "^0.3.0",
+    "@genkit-ai/google-genai": "^1.39.0",
     "adm-zip": "^0.5.18",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "genkit": "^1.39.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "pg": "^8.22.0",

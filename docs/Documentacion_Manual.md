@@ -1807,7 +1807,6 @@ En el test unitario del caso de uso que tenemos de UploadProjectZipUseCase vamos
                 }
                 }
 
-
 Esto causara error en otros test asique hay que adaptarlos.
 
 Pero primeo empezamos con el test, que falle y ya iremos modificando todo.
@@ -2326,33 +2325,538 @@ Cada vez que se sube o resube un ZIP:
 
 Esto prepara el sistema para la siguiente fase: embeddings y búsqueda semántica.
 
+---
 
-
-
-----------------------------------
-
-
-## . FASE 6.1
+### . FASE 6.1
 
 En esta fase vamos a realizar un analisis de busqueda probelmas, insconsistencias y seguirdad:
 
 🟡 Inconsistencias:
 
- - Naming de errores que mezcclava dos conevnciones
- - Genracion de tipos de errores para cumplir el contrato de errorsMiddleware
- - Patrón de DI inconsistente, reunificado todo para que el container se intancie bien el el route ( composition root) y los controller solo reciban lo que necesitan.
-
+- Naming de errores que mezcclava dos conevnciones
+- Genracion de tipos de errores para cumplir el contrato de errorsMiddleware
+- Patrón de DI inconsistente, reunificado todo para que el container se intancie bien el el route ( composition root) y los controller solo reciban lo que necesitan.
 
 🔴 Seguridad
 
- - Alta: Establecer un limite de tamaño del ZIP subido y generar proteccion basica contra zip-bomb.
- 
- - Media: Si no se define la variable, la app arranca igualmente firmando tokens con un secreto público hardcodeado, en vez de fallar rápido. Arreglar eso.
- 
- - Media: No hay express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta. Solucionar eso instalando y aplicando con un middlware express-rate.limit.El middleware se desactiva automáticamente cuando NODE_ENV === "test" (Vitest lo pone así por defecto), para no romper la suite de integración que hace muchos registros/logins seguidos desde la misma IP.
+- Alta: Establecer un limite de tamaño del ZIP subido y generar proteccion basica contra zip-bomb.
 
+- Media: Si no se define la variable, la app arranca igualmente firmando tokens con un secreto público hardcodeado, en vez de fallar rápido. Arreglar eso.
+
+- Media: No hay express-rate-limit. POST /auth/login y /auth/register no tienen ninguna protección contra fuerza bruta. Solucionar eso instalando y aplicando con un middlware express-rate.limit.El middleware se desactiva automáticamente cuando NODE_ENV === "test" (Vitest lo pone así por defecto), para no romper la suite de integración que hace muchos registros/logins seguidos desde la misma IP.
 
 🔵 Pulido del README.md
+
+# DevMind API — Resumen del proyecto (hasta Fase 6)
+
+## Qué es DevMind
+
+API backend (Node.js + TypeScript + Express) que permite a un usuario autenticado
+crear proyectos software, subir su código (vía ZIP) y, en fases futuras, consultarlo
+en lenguaje natural usando IA (RAG). La idea central: convertir un proyecto software
+en una fuente de conocimiento consultable, útil para devs nuevos, equipos con proyectos
+grandes o sin documentación actualizada.
+
+Arquitectura: Clean/Hexagonal — `domain` (entidades + interfaces de repositorio),
+`application` (casos de uso + puertos), `infrastructure` (adaptadores reales: Postgres,
+bcrypt, JWT, adm-zip...), `transport/http` (Express: routes, controllers, middlewares),
+`container` (inyección de dependencias manual). Metodología: TDD en dominio/aplicación,
+tests de integración HTTP con Supertest para la capa de transporte.
+
+Jerarquía de dominio actual:
+
+---
+
+## Fases completadas
+
+**Fase 0 — Setup inicial**
+Proyecto Node/TS/Express, Vitest+Supertest, estructura de carpetas limpia,
+`tsconfig`, `.env.example`, endpoint `/health`.
+
+**Fase 1 — Autenticación**
+`User`, `UserRepository`, casos de uso (`RegisterUserUseCase`, `LoginUserUseCase`,
+`GetCurrentUserUseCase`), adaptadores reales (`bcryptjs`, `jsonwebtoken`, `crypto.randomUUID`),
+endpoints `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `authMiddleware`,
+`errorMiddleware`, validación con Zod. Errores propios: `UserAlreadyExistsError`,
+`InvalidCredentialsError`, `UserNotFoundError`, `UnauthorizedError`.
+
+**Fase 2 — Proyectos persistentes**
+`Project`, `ProjectRepository`, CRUD de proyectos por usuario (`POST/GET/GET:id/DELETE:id /projects`).
+Regla clave: nunca buscar solo por `id`, siempre `projectId + ownerId` → un proyecto de otro
+usuario responde `404` (no `403`, para no revelar su existencia). `ProjectNotFoundError`.
+
+**Fase 3 — ProjectFiles básicos**
+`ProjectFile`, `ProjectFileRepository`, CRUD de archivos vía JSON (sin ZIP todavía):
+`POST/GET/GET:fileId/DELETE:fileId /projects/:projectId/files`. Cálculo de `size` y `hash`.
+Misma regla de seguridad por ownership. `ProjectFileNotFoundError`.
+
+**Fase 4 — PostgreSQL**
+Se sustituyen los repositorios en memoria por `PostgresUserRepository`,
+`PostgresProjectRepository`, `PostgresProjectFileRepository` (Docker Compose, `postgresPool`,
+migraciones SQL con `ON DELETE CASCADE`). Se crea `devmind_test_db` separada para tests,
+con `globalSetup` que limpia tablas antes/después de cada run.
+
+**Fase 5 — Subida de ZIP**
+Nuevo endpoint `POST /projects/:projectId/upload` (multipart/form-data, campo `file`).
+`UploadProjectZipUseCase` coordina: `multer` recibe el ZIP → puerto `ZipExtractor`
+(implementación real `AdmZipExtractor`) lo extrae → se ignoran carpetas inútiles
+(`node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`) → se crean `ProjectFile`.
+Si no queda ningún archivo válido → `NoValidProjectFilesFoundError` (400). Sin archivo
+adjunto → 400 `"Zip file is required"`.
+
+**Fase 5.1 — Sincronización por path + hash**
+Evita duplicados al resubir el mismo ZIP. Compara los archivos entrantes con los existentes
+por `path`, y por `hash` decide si están sin cambios. Comportamiento:
+
+- nuevo → **created**
+- mismo path, hash distinto → **updated** (nuevo método `update()` en `ProjectFileRepository`)
+- mismo path, mismo hash → **unchanged** (no se toca)
+- existía en BD pero ya no está en el ZIP → **deleted**
+
+Caso especial: archivo movido de carpeta = mismo hash pero distinto path → se interpreta como
+`deleted` (ruta vieja) + `created` (ruta nueva); válido para el objetivo actual.
+
+Contrato de respuesta actualizado a:
+
+```
+{
+  "projectId": "...",
+  "summary": { "created": 0, "updated": 0, "deleted": 0, "unchanged": 0 },
+  "files": { "created": [], "updated": [], "deleted": [], "unchanged": [] }
+}
+```
+
+**Fase 6 — CodeChunks**
+
+Nueva entidad CodeChunk (id, projectId, projectFileId, content, startLine, endLine, index, createdAt)
+y CodeChunkRepository (saveMany, findByProjectFileId, deleteByProjectFileId).
+LineCodeChunker: trocea el contenido de un archivo por líneas, con maxLinesPerChunk y
+overlapLines configurables; devuelve [] si el contenido está vacío; protegido contra
+configuraciones inválidas (overlap ≥ maxLines). GenerateCodeChunksForProjectFileUseCase:
+borra chunks antiguos del archivo, genera los nuevos fragmentos y los persiste.
+
+Integrado en la subida/resubida de ZIP:
+
+created / updated → (re)genera chunks
+unchanged → no toca chunks
+deleted → el ProjectFile se borra y sus chunks caen por ON DELETE CASCADE
+Persistencia real en Postgres: migración 004_create_code_chunks.sql +
+PostgresCodeChunkRepository, con test específico de borrado en cascada.
+Verificado también con test de integración HTTP end-to-end sobre POST /projects/:id/upload.
+
+**Estado actual**
+
+Todo lo anterior está commiteado y el árbol de trabajo está limpio. docs/openapi.yaml
+está al día con el contrato real (incluye summary/files agrupados y una nota sobre
+la indexación en chunks como efecto secundario interno sin cambiar la respuesta HTTP).
+
+Siguiente paso lógico: Fase 7 — Embeddings + búsqueda semántica
+Generar embeddings de cada CodeChunk y poder buscar los chunks más relevantes para una
+consulta en lenguaje natural. Esto es el paso previo imprescindible antes de la Fase 8 (IA/RAG),
+donde ya se podrán responder preguntas sobre el proyecto usando esos chunks recuperados.
+
+
+
+
+# FASE 7 Genkit + PostgreSQL/pgvector
+
+Hasta ahora tenemos esto cerrado:
+
+    projects
+    └── project_files
+    └── code_chunks
+
+Queremos llegar a esto:
+
+        projects
+        └── project_files
+            └── code_chunks
+                └── embedding vectorial
+
+Pero no lo haremos “a mano sin Genkit”. Lo haremos usando Genkit como capa de IA.
+
+La responsabilidad quedaría así:
+
+        DevMind:
+        - usuarios
+        - proyectos
+        - archivos
+        - chunks
+        - permisos
+        - sincronización ZIP
+        - PostgreSQL
+
+        Genkit:
+        - modelo de embeddings
+        - generación de vectores
+        - recuperación semántica
+        - generación de respuesta
+
+Y PostgreSQL con pgvector será el sitio donde guardaremos los embeddings. Genkit tiene documentación oficial para usar PostgreSQL con pgvector como implementación de retriever, y explica que pgvector permite almacenar y consultar vectores de alta dimensión dentro de PostgreSQL.
+
+Que es un Embeding:
+
+ - Un embedding es una lista de números que representa el significado de un texto.
+
+ - Ejemplo conceptual:
+
+        "crear usuario con email y contraseña"
+        ↓
+        [0.123, -0.456, 0.982, ...]
+
+ - Luego, cuando el usuario pregunte:
+
+        "¿Dónde se registra un usuario?"
+
+ - la app también convierte esa pregunta en embedding y busca los chunks cuyos embeddings sean más parecidos.
+
+ - Ese será el corazón del RAG.
+
+En todo momento:
+1. Primero test
+2. Ver que falla
+3. Implementación mínima
+4. Ver que pasa
+5. Refactor si hace falta
+
+La fase 7 se devidiria en los siguientes puntos:
+
+        7.1 Preparar PostgreSQL para pgvector
+        - Test primero: comprobar que PostgreSQL acepta la extensión vector.
+        - Fallará si la imagen actual no soporta pgvector.
+        - Implementación: cambiar Docker a una imagen con pgvector y crear migración.
+
+        7.2 Crear tabla de embeddings
+        - Test primero: comprobar que se puede guardar un embedding asociado a un CodeChunk.
+        - Fallará porque no existe la tabla.
+        - Implementación: migración code_chunk_embeddings.
+
+        7.3 Crear repositorio de embeddings
+        - Test primero: PostgresCodeChunkEmbeddingRepository guarda, busca y borra embeddings.
+        - Implementación mínima del repositorio.
+
+        7.4 Crear puerto EmbeddingGenerator
+        - Test primero con fake: dado un CodeChunk, se llama al generador con su content.
+        - Implementación: interfaz/puerto.
+
+        7.5 Crear GenerateEmbeddingForCodeChunkUseCase
+        - Test primero: genera embedding, lo guarda y devuelve resultado.
+        - Implementación mínima del caso de uso.
+
+        7.6 Crear adaptador GenkitEmbeddingGenerator
+        - Test controlado: comprobar que el adaptador llama a Genkit y devuelve number[].
+        - Implementación con ai.embed.
+
+        7.7 Integrar embeddings con generación de chunks
+        - Test primero: cuando se generan chunks nuevos, se generan embeddings.
+        - Implementación mínima.
+        - Test: unchanged no regenera embeddings.
+
+        7.8 Integrar con subida/resubida ZIP
+        - Test HTTP primero: al subir ZIP se crean chunks y embeddings.
+        - Test HTTP: al resubir ZIP, updated regenera embeddings y unchanged no.
+
+        7.9 Crear búsqueda semántica
+        - Test primero: dado un embedding de pregunta, se devuelven chunks del mismo proyecto ordenados por similitud.
+        - Implementación con pgvector.
+
+        7.10 Crear endpoint de preguntas
+        - Test HTTP primero:
+        POST /projects/:projectId/ask
+        - Implementación:
+        auth, project ownership, retrieve, generate, answer + sources.
+
+
+
+
+## 7.1 Preparar PostgreSQL para pgvector
+
+Como este proyecto sigue TDD primero como siempre empezaremos con los test.
+
+Queremos comprobar esto:
+
+ - PostgreSQL tiene habilitada la extensión vector.
+
+Esa extensión es la que permite usar pgvector
+
+Vamos a crear el test postgresVectorExtension.
+
+ - Este test mira dentro de PostgreSQL si existe una extensión llamada:
+
+        vector
+
+El test falla ya que aun no hay nada implementado.
+
+Ahora que el test esta en rojo vamos con la implementacion para ponerlo en verde:
+
+ - Crear migración para activar pgvector, de momento solo activamos la extension, implementacion minima para que el test pase. Esto probablemente dara un error de que en el servidor de docker que hemos levantado con postgre, no se tiene pgvector instalado. Para ello hay que modificar la imagen , el dockercompose. Con todo esto, el test ya pasa.
+
+
+## 7.2 — Crear tabla para guardar embeddings.
+
+Queremos probar esto:
+
+        Dado un CodeChunk existente,
+        puedo guardar un embedding asociado a ese CodeChunk.
+
+La tabla todavía no existe, así que el test debería fallar.
+
+Empezamos creando el test codeChunkEmbeddingsTable:
+
+ - Este test crea toda la cadena necesaria:
+
+        user
+        ↓
+        project
+        ↓
+        project_file
+        ↓
+        code_chunk
+        ↓
+        code_chunk_embedding
+
+ - Y comprueba que el embedding guardado tiene dimensión:
+
+        768
+
+ - Esto es importante porque nuestra futura tabla tendrá algo como:
+
+        embedding vector(768)
+
+
+Ahora , que el test falla en rojo,  hacemos la implementación mínima: crear la tabla:
+
+ - Creamos el archivo de migracion para crear la tabla
+
+Con esto ya pasan todos los test.
+
+
+## 7.3 — Crear repositorio PostgresCodeChunkEmbeddingRepository con TDD
+
+Despues de esto, lo primero es  poder guardar y leer embeddings desde PostgreSQL, en PostgresCodeChunkEmbeddingRepository
+
+Creamos primoer el test de repositorio: postgresCodeChunkEmbeddingRepository.
+
+En este test estamos probando:
+
+        Quiero un repositorio capaz de:
+        1. recibir un embedding como number[]
+        2. guardarlo en PostgreSQL como vector(768)
+        3. recuperarlo otra vez como number[]
+        4. mantener la relación con projectId y codeChunkId
+
+
+Una vez que veamos que el test falla, pasamos a implementar lo que es la entidad de embedding, la interfaz del repositorio y su adapatador en incraestructura:
+
+
+## 7.4 — Caso de uso para generar embedding de un CodeChunk
+
+Queremos algo así:
+
+    CodeChunk
+    ↓
+    EmbeddingGenerator
+    ↓
+    CodeChunkEmbeddingRepository
+    ↓
+    embedding guardado
+
+El caso de uso hará:
+
+    1. Recibe un CodeChunk
+    2. Le pasa el content al generador de embeddings
+    3. Recibe un number[]
+    4. Crea un CodeChunkEmbedding
+    5. Lo guarda en PostgreSQL mediante el repositorio
+
+
+Primero como siempre vamos con el test.
+
+Una vez que veamos que este tes falla pasamos a implementar el puerto del embeddingGenerator y el generateEmbeddingForCodeChunkUseCase.
+
+El caso de uso hace lo siguient:
+
+Recibe:
+
+ - CodeChunk
+
+        Ejemplo:
+
+        {
+        id: "code-chunk-1",
+        projectId: "project-1",
+        content: "export const hello = 'world';"
+        }
+
+Luego hace:
+
+    1. Coge el content del CodeChunk
+    2. Se lo pasa al EmbeddingGenerator
+    3. Recibe un number[]
+    4. Crea un CodeChunkEmbedding
+    5. Lo guarda con el repositorio
+
+Cadena:
+
+    CodeChunk.content
+    ↓
+    EmbeddingGenerator.generateEmbedding(...)
+    ↓
+    number[]
+    ↓
+    CodeChunkEmbedding
+    ↓
+    CodeChunkEmbeddingRepository.save(...)
+
+
+Una vez que ya tenemos esto pasando e implementado lo que vamos a hacer es añadir un nuevo test, para que se comporte de esta manera:
+
+        Si genero embedding para un CodeChunk por primera vez:
+        → guarda embedding nuevo
+
+        Si genero embedding otra vez para el mismo CodeChunk:
+        → borra el embedding anterior
+        → guarda el nuevo
+
+Este test no pasa y por tanto nos ponemos a implementar esta nueva cosa en el caos de uso.
+
+Ahora vamos a añadir dos nuevos test para Si se borra un CodeChunk,
+su embedding debe borrarse también.
+
+Los test los añadimos al test de reposiotrio:
+
+El primer test comprueba esto:
+
+        repository.deleteByCodeChunkId(...)
+        ↓
+        borra el embedding
+
+El segundo comprueba esto:
+
+        DELETE code_chunk
+        ↓
+        PostgreSQL borra embedding por ON DELETE CASCADE
+
+Esto nos protege para la sincronización ZIP.
+
+Estos test pasan porque ya tenemos bastante implementado
+
+
+## 7.5 — Crear el adaptador real GenkitEmbeddingGenerator
+
+Vamos a empezar ya con genkit, para usarlo para generar los embedding.
+
+Primero instalamos genkit @genkit-ai/google-genai y en el .env añadimos GEMINI_API_KEY=tu_api_key
+
+Primero generamos el test genkitEmbeddingGenerator:
+
+ - Este test no llama a Google. Solo comprueba que nuestro adaptador usa el ai real configurado, pero mockeado durante el test.
+
+ - Debería fallar porque todavía no existen estos archivos:
+
+    src/infrastructure/genkit/ai.ts
+    src/infrastructure/genkit/genkitEmbeddingGenerator.ts
+
+
+Una vez que veamos que falla pasamos a crear las implementaciones:
+
+Una vez creadas y visto que ya pasan los test, ya tenemos la siguiente cadena:
+
+        CodeChunk
+        ↓
+        GenerateEmbeddingForCodeChunkUseCase
+        ↓
+        GenkitEmbeddingGenerator
+        ↓
+        Genkit ai.embed(...)
+        ↓
+        PostgresCodeChunkEmbeddingRepository
+        ↓
+        code_chunk_embeddings
+
+Lo siguiente es conectar esa cadena al flujo que ya teníamos de chunks.
+
+
+## 7.6 — Generar embeddings automáticamente cuando se generan CodeChunks
+
+El sitio correcto para conectarlo es:
+
+    GenerateCodeChunksForProjectFileUseCase
+
+Porque ahora mismo ese caso de uso hace algo así:
+
+        ProjectFile
+        ↓
+        LineCodeChunker
+        ↓
+        CodeChunks
+        ↓
+        saveMany(...)
+
+Y queremos que pase a ser:
+
+        ProjectFile
+        ↓
+        LineCodeChunker
+        ↓
+        CodeChunks
+        ↓
+        saveMany(...)
+        ↓
+        GenerateEmbeddingForCodeChunkUseCase por cada chunk guardado
+
+Así luego, por herencia, la subida ZIP quedará bien:
+
+        created file → genera chunks → genera embeddings
+        updated file → regenera chunks → regenera embeddings
+        unchanged file → no hace nada
+        deleted file → cascade borra chunks y embeddings
+
+
+Como siempre , emepzamos con los test:
+
+ - Vamos a modificar generateCodeChunksForProjectFileUseCase.test
+ - El test fallara porque al caso de uso le pasamos 4 cosas cuando deberia recibir solo 3, por lo tanto modificamos generateCodeChunksForProjectFileUseCase
+ - Tambien hay que modificar los test antiguos ya que ahora el caso de uso recibre 4 cosas.
+ - Tambien hay que modificar el container
+
+## Cierre hasta ahora
+
+Ahora para cerrar vamos a añadir un test en uploadZipEndpoint  en el que Queremos demostrar esto:
+
+    Cuando subo un ZIP por el endpoint,
+    se crean ProjectFiles,
+    se crean CodeChunks,
+    y también se crean CodeChunkEmbeddings.
+
+Estos Test pasan.
+
+Entonces cerramos esta parte:
+
+✅ Upload ZIP crea ProjectFiles
+✅ Upload ZIP crea CodeChunks
+✅ Upload ZIP crea CodeChunkEmbeddings
+✅ La sincronización ZIP conserva embeddings de unchanged
+✅ Regenera embeddings de updated
+✅ Borra embeddings de deleted por cascade
+✅ Todos los tests pasan
+
+Ahora mismo DevMind ya tiene esta cadena funcionando:
+
+        ZIP
+        ↓
+        ProjectFiles
+        ↓
+        CodeChunks
+        ↓
+        Embeddings
+        ↓
+        PostgreSQL/pgvector
+
+Esto es un avance importante porque ya no solo guardamos el código troceado, sino también su representación vectorial.
+
+
+
 
 
 
