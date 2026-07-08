@@ -60,6 +60,11 @@ import { GenkitEmbeddingGenerator } from "../infrastructure/genkit/genkitEmbeddi
 import { GenerateEmbeddingForCodeChunkUseCase } from "../application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
 
 
+//IMPORTS PARA LA PARTE DE LAS PREGUNTAS
+import type { AnswerGenerator } from "../application/ports/answerGenerator";
+import { AskProjectQuestionUseCase } from "../application/projectQuestions/askProjectQuestionUseCase";
+import { GenkitAnswerGenerator } from "../infrastructure/genkit/genkitAnswerGenerator";
+import { TestAnswerGenerator } from "../infrastructure/genkit/testing/testAnswerGenerator";
 
 //[INSTANCIAMOS LOS REPOSITORIOS]
 
@@ -97,6 +102,12 @@ const generateEmbeddingForCodeChunkUseCase =
     embeddingGenerator,
     idGenerator,
   );
+
+//Monto el generador de las preguntas
+const answerGenerator: AnswerGenerator =
+  process.env.NODE_ENV === "test"
+    ? new TestAnswerGenerator()
+    : new GenkitAnswerGenerator();
 
 
 //Monto las dependencias de los chunk
@@ -165,6 +176,13 @@ export const container = {
     idGenerator,
     generateCodeChunksForProjectFileUseCase,
   ),
+
+  askProjectQuestionUseCase: new AskProjectQuestionUseCase(
+  projectRepository,
+  embeddingGenerator,
+  codeChunkEmbeddingRepository,
+  answerGenerator,
+),
 
   tokenService,
 };

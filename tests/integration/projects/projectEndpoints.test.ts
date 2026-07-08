@@ -2,6 +2,7 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 
 import { app } from "../../../src/app";
+import AdmZip from "adm-zip";
 
 describe("Projects routes", () => {
   //ENDPOINT POST /projects
@@ -416,5 +417,207 @@ describe("Projects routes", () => {
       .set("Authorization", `Bearer ${userOneAccessToken}`);
 
     expect(ownerGetResponse.status).toBe(200);
+  });
+  it("POST /projects/:id/ask should answer a question for the authenticated user's project", async () => {
+    const email = `ask-project-user-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Ask Project User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "DevMind API",
+        description: "Backend con IA para consultar proyectos software",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const response = await request(app)
+      .post(`/projects/${projectId}/ask`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        question: "¿Dónde se registra un usuario?",
+      });
+
+    expect(response.status).toBe(200);
+
+    expect(response.body).toEqual({
+      answer:
+        "No tengo suficiente información del proyecto para responder a esa pregunta.",
+      sources: [],
+    });
+  });
+  it("POST /projects/:id/ask should return 401 when no token is provided", async () => {
+    const response = await request(app)
+      .post("/projects/some-project-id/ask")
+      .send({
+        question: "¿Dónde se registra un usuario?",
+      });
+
+    expect(response.status).toBe(401);
+  });
+  it("POST /projects/:id/ask should return 404 when asking about another user's project", async () => {
+    const password = "password123";
+
+    const ownerEmail = `ask-owner-${Date.now()}@test.com`;
+    const intruderEmail = `ask-intruder-${Date.now()}@test.com`;
+
+    await request(app).post("/auth/register").send({
+      name: "Project Owner",
+      email: ownerEmail,
+      password,
+    });
+
+    await request(app).post("/auth/register").send({
+      name: "Intruder",
+      email: intruderEmail,
+      password,
+    });
+
+    const ownerLoginResponse = await request(app).post("/auth/login").send({
+      email: ownerEmail,
+      password,
+    });
+
+    const intruderLoginResponse = await request(app).post("/auth/login").send({
+      email: intruderEmail,
+      password,
+    });
+
+    const ownerAccessToken = ownerLoginResponse.body.accessToken;
+    const intruderAccessToken = intruderLoginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .send({
+        name: "Private DevMind Project",
+        description: "This project belongs to the owner",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const response = await request(app)
+      .post(`/projects/${projectId}/ask`)
+      .set("Authorization", `Bearer ${intruderAccessToken}`)
+      .send({
+        question: "¿Dónde se registra un usuario?",
+      });
+
+    expect(response.status).toBe(404);
+  });
+
+  it("POST /projects/:id/ask should return 400 when question is empty", async () => {
+    const email = `ask-empty-question-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Ask Empty Question User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "DevMind API",
+        description: "Backend con IA para consultar proyectos software",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const response = await request(app)
+      .post(`/projects/${projectId}/ask`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        question: "",
+      });
+
+    expect(response.status).toBe(400);
+  });
+  it("POST /projects/:id/ask should answer using uploaded project chunks", async () => {
+    const email = `ask-with-context-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Ask With Context User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "DevMind API",
+        description: "Backend con IA para consultar proyectos software",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const zip = new AdmZip();
+
+    zip.addFile(
+      "src/auth/registerUserUseCase.ts",
+      Buffer.from("export class RegisterUserUseCase {}", "utf8"),
+    );
+
+    const uploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", zip.toBuffer(), {
+        filename: "project.zip",
+        contentType: "application/zip",
+      });
+
+    expect(uploadResponse.status).toBe(201);
+
+    const response = await request(app)
+      .post(`/projects/${projectId}/ask`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        question: "¿Dónde se registra un usuario?",
+      });
+
+    expect(response.status).toBe(200);
+
+    expect(response.body).toEqual({
+      answer: "Respuesta generada por IA pendiente de implementar.",
+      sources: [
+        {
+          path: "src/auth/registerUserUseCase.ts",
+          startLine: 1,
+          endLine: 1,
+        },
+      ],
+    });
   });
 });

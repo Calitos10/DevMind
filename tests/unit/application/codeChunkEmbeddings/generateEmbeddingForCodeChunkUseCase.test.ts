@@ -5,6 +5,7 @@ import { CodeChunkEmbedding } from "../../../../src/domain/entities/codeChunkEmb
 import { CodeChunkEmbeddingRepository } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
 import { IdGenerator } from "../../../../src/application/ports/idGeneratorPort";
 import { GenerateEmbeddingForCodeChunkUseCase } from "../../../../src/application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
+import { SimilarCodeChunk } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
 
 class FakeCodeChunkEmbeddingRepository implements CodeChunkEmbeddingRepository {
   public embeddings: CodeChunkEmbedding[] = [];
@@ -30,6 +31,9 @@ class FakeCodeChunkEmbeddingRepository implements CodeChunkEmbeddingRepository {
     this.embeddings = this.embeddings.filter(
       (embedding) => embedding.codeChunkId !== codeChunkId,
     );
+  }
+  async findSimilarByProjectId(): Promise<SimilarCodeChunk[]> {
+    return [];
   }
 }
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 
 import { ProjectController } from "./projectController";
-import { projectSchema } from "./projectSchemas";
+import { projectSchema, askProjectQuestionSchema } from "./projectSchemas";
 import { authMiddleware } from "../../http/middleware/authMiddleware";
 import { validateBody } from "../../http/middleware/validateBodyMiddleware";
 import { asyncHandler } from "../../http/middleware/asyncHandler";
@@ -18,6 +18,7 @@ const projectController = new ProjectController(
   container.getProjectByIdUseCase,
   container.deleteProjectUseCase,
   container.uploadProjectZipUseCase,
+  container.askProjectQuestionUseCase,
 );
 
 const upload = multer({
@@ -45,6 +46,13 @@ projectRoutes.get(
   "/",
   authMiddleware,
   asyncHandler((req, res) => projectController.list(req, res)),
+);
+
+projectRoutes.post(
+  "/:id/ask",
+  authMiddleware,
+  validateBody(askProjectQuestionSchema),
+  asyncHandler((req, res) => projectController.ask(req, res)),
 );
 
 projectRoutes.get(

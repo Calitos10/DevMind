@@ -10,5 +10,8 @@ export default defineConfig({
     // de tablas entre ejecuciones (ver globalSetup.ts). Correr los ficheros en
     // paralelo haría que unos test files pisaran los datos de otros.
     fileParallelism: false,
+    env: {
+      NODE_ENV: "test",
+    },
   },
 });

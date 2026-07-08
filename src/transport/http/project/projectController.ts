@@ -7,6 +7,7 @@ import { ListUserProjectsUseCase } from "../../../application/projects/listUserP
 import { GetProjectByIdUseCase } from "../../../application/projects/getProjectByIdUseCase";
 import { DeleteProjectUseCase } from "../../../application/projects/deleteProjectUseCase";
 import { UploadProjectZipUseCase } from "../../../application/uploadZip/uploadProjectZipUseCase";
+import { AskProjectQuestionUseCase } from "../../../application/projectQuestions/askProjectQuestionUseCase";
 
 export class ProjectController {
   constructor(
@@ -15,6 +16,7 @@ export class ProjectController {
     private readonly getProjectByIdUseCase: GetProjectByIdUseCase,
     private readonly deleteProjectUseCase: DeleteProjectUseCase,
     private readonly uploadProjectZipUseCase: UploadProjectZipUseCase,
+    private readonly askProjectQuestionUseCase: AskProjectQuestionUseCase,
   ) {}
 
   async create(req: Request, res: Response) {
@@ -75,5 +77,16 @@ export class ProjectController {
     });
 
     return res.status(201).json(result);
+  }
+  async ask(req: Request, res: Response) {
+    const authenticatedReq = req as AuthenticatedRequest;
+
+    const result = await this.askProjectQuestionUseCase.execute({
+      projectId: authenticatedReq.params.id as string,
+      userId: authenticatedReq.user.userId,
+      question: authenticatedReq.body.question,
+    });
+
+    return res.status(200).json(result);
   }
 }

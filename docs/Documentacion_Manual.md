@@ -114,7 +114,7 @@ Antes de implementar nada vamos ha hacer tests conn TDD , que falen e implementa
 
 CASOS DE USO:
 
-1.[RegisterUserUseCase]
+1.RegisterUserUseCase]
 
 - Antes de crear el primer test debemos:
 
@@ -2854,6 +2854,374 @@ Ahora mismo DevMind ya tiene esta cadena funcionando:
         PostgreSQL/pgvector
 
 Esto es un avance importante porque ya no solo guardamos el código troceado, sino también su representación vectorial.
+
+
+## 7.7 Busqueda semantica de chunks medinate los embeddings
+
+Para cerrar la fase entera, nos falta una última parte: usar los embeddings que ya guardamos.
+
+Ahora mismo tenemos esto cerrado:
+
+                ZIP
+                ↓
+                ProjectFiles
+                ↓
+                CodeChunks
+                ↓
+                Embeddings guardados en PostgreSQL/pgvector
+
+Lo que falta para cerrar la fase de embeddings/búsqueda es:
+
+                embedding de pregunta
+                ↓
+                buscar embeddings parecidos en PostgreSQL/pgvector
+                ↓
+                devolver CodeChunks relevantes
+
+pgvector permite ordenar vectores por distancia usando operadores como <-> para distancia L2; la documentación oficial muestra consultas tipo ORDER BY embedding <-> '[3,1,2]' LIMIT 5, que es justo el patrón que usaremos para buscar los chunks más cercanos.
+
+Empezamos como siempre creando el test, vamos a modificar el test de postgresCodeChunkEmbeddingRepository.test. Este deberia fallar porque aun no hemos implementado el nuevo metodo en codeChunkEmbeddingRepository.ts y en postgresCodeChunkEmbeddingRepository.ts
+
+Una vez que vemos que falla, pasamos a implementar:
+
+ - Implementamos el nuevo metodo en el puerto del repositorio de emdeding, tenemos que crear el nuevo metodo y el nuevo tipo que devolver en array.
+ - Esto añade al contrato nuevo: dado un projectId + embedding de pregunta, devuélveme chunks parecidos de ese proyecto
+ - Implemento el adaptador del reposiotrio, tengo que actualizar el import para recibir el tipo del similar codechunk y tambien añadir e implementar el nuevo metodo.
+
+ Con esto ya tenemos creado el nuevo metodo que lo que hara es buscar los chunks parecidos cuadno un usuario le pase la pregunta.
+
+
+## Resumen final — Estado actual del sistema RAG
+
+Después de las últimas fases, DevMind ya tiene construida una cadena completa desde la subida del proyecto hasta la generación de embeddings.
+
+La cadena actual es:
+
+```txt
+ZIP
+↓
+ProjectFiles
+↓
+CodeChunks
+↓
+Embeddings
+↓
+PostgreSQL/pgvector
+```
+
+Esto significa que DevMind ya puede recibir un proyecto comprimido en ZIP, convertir sus archivos en `ProjectFiles`, dividir esos archivos en `CodeChunks`, generar embeddings para esos chunks y guardarlos en PostgreSQL usando `pgvector`.
+
+Además, ya se ha construido la base para la búsqueda semántica:
+
+```txt
+embedding de una pregunta
+↓
+buscar chunks parecidos por projectId
+↓
+devolver chunks relevantes ordenados por similitud
+```
+
+Esto es muy importante porque ya está creada la base real del sistema RAG.
+
+Ahora DevMind no solo guarda código, sino que también puede representar ese código de forma vectorial y buscar fragmentos relevantes según el significado de una pregunta.
+
+---
+
+### Qué se ha cerrado
+
+En esta parte del proyecto se ha dejado implementado y comprobado:
+
+```txt
+✅ PostgreSQL preparado con pgvector
+✅ Migración CREATE EXTENSION vector
+✅ Tabla code_chunk_embeddings
+✅ Repositorio de embeddings
+✅ Guardar embedding
+✅ Buscar embedding por codeChunkId
+✅ Borrar embedding
+✅ Borrado automático por cascade
+✅ Puerto EmbeddingGenerator
+✅ Caso de uso GenerateEmbeddingForCodeChunkUseCase
+✅ Genkit instalado/configurado
+✅ GenkitEmbeddingGenerator usando ai.embed
+✅ Integración embeddings con generación de CodeChunks
+✅ Integración embeddings con subida/resubida ZIP
+✅ Test HTTP comprobando ProjectFiles + CodeChunks + Embeddings
+✅ Método findSimilarByProjectId
+✅ Búsqueda semántica filtrada por proyecto
+```
+
+Con esto, DevMind ya tiene preparada la parte necesaria para conectar el contenido del proyecto con búsquedas por significado.
+
+---
+
+### Flujo actual de sincronización
+
+Ahora, cuando se sube o se resube un ZIP, DevMind sincroniza el proyecto de forma inteligente.
+
+### Archivo nuevo
+
+```txt
+archivo created
+↓
+ProjectFile nuevo
+↓
+CodeChunks nuevos
+↓
+Embeddings nuevos
+```
+
+Si el archivo no existía antes, DevMind lo crea como `ProjectFile`, genera sus `CodeChunks` y después genera los embeddings correspondientes.
+
+---
+
+### Archivo actualizado
+
+```txt
+archivo updated
+↓
+ProjectFile actualizado
+↓
+CodeChunks regenerados
+↓
+Embeddings regenerados
+```
+
+Si el archivo ya existía pero su contenido ha cambiado, DevMind actualiza el `ProjectFile`, regenera sus chunks y vuelve a generar sus embeddings.
+
+---
+
+### Archivo sin cambios
+
+```txt
+archivo unchanged
+↓
+ProjectFile igual
+↓
+CodeChunks conservados
+↓
+Embeddings conservados
+```
+
+Si el archivo sigue igual, DevMind no hace trabajo innecesario. Conserva el `ProjectFile`, los `CodeChunks` y los embeddings que ya existían.
+
+---
+
+### Archivo eliminado
+
+```txt
+archivo deleted
+↓
+ProjectFile eliminado
+↓
+CodeChunks eliminados por cascade
+↓
+Embeddings eliminados por cascade
+```
+
+Si un archivo ya no aparece en el nuevo ZIP, DevMind elimina el `ProjectFile`. Después, PostgreSQL se encarga de borrar automáticamente sus `CodeChunks` y sus embeddings mediante `ON DELETE CASCADE`.
+
+---
+
+### Flujo actual de búsqueda semántica
+
+Además de generar embeddings para el código, DevMind ya tiene la base para buscar fragmentos relevantes a partir de una pregunta.
+
+El flujo es:
+
+```txt
+pregunta del usuario
+↓
+embedding de la pregunta
+↓
+findSimilarByProjectId
+↓
+chunks relevantes del mismo proyecto
+```
+
+Esto permite que una pregunta del usuario se convierta en un embedding y se compare con los embeddings de los chunks guardados.
+
+La búsqueda se filtra por `projectId`, por lo que DevMind solo devuelve fragmentos relevantes del proyecto sobre el que el usuario está preguntando.
+
+---
+
+### Estado actual de DevMind
+
+En este punto, DevMind ya tiene construida la base técnica real para RAG.
+
+El sistema puede:
+
+```txt
+1. Recibir un ZIP de un proyecto.
+2. Extraer sus archivos.
+3. Guardarlos como ProjectFiles.
+4. Dividirlos en CodeChunks.
+5. Generar embeddings de cada chunk.
+6. Guardar esos embeddings en PostgreSQL/pgvector.
+7. Sincronizar correctamente archivos creados, actualizados, eliminados y sin cambios.
+8. Buscar chunks relevantes mediante similitud vectorial.
+9. Filtrar la búsqueda semántica por proyecto.
+```
+
+Esto deja el proyecto preparado para el siguiente gran paso: usar esos chunks relevantes como contexto para que la IA pueda responder preguntas sobre el proyecto.
+
+
+# FASE 9
+
+9.1 — Crear puerto/caso de uso para responder preguntas
+AskProjectQuestionUseCase
+
+9.2 — Generar embedding de la pregunta
+Usando el EmbeddingGenerator que ya tenemos
+
+9.3 — Buscar chunks relevantes
+Usando findSimilarByProjectId
+
+9.4 — Crear generador de respuesta con IA
+Puerto AnswerGenerator o RagAnswerGenerator
+
+9.5 — Adaptador Genkit para generar respuesta
+Usando ai.generate
+
+9.6 — Crear endpoint POST /projects/:projectId/ask
+Con auth y validación
+
+9.7 — Devolver fuentes
+path, startLine, endLine, content opcional
+
+9.8 — Tests HTTP completos
+Pregunta válida, proyecto ajeno, sin auth, pregunta vacía
+
+
+Vamos a empezar la fase de IA en la cual generaremos un emebdding de la pregunta del usuario, recuperaremos usando ese emebdding los chunks mas parecidos y se los pasaremos a una IA para que devuelva la respuesta.
+
+Fase 9.1 - askProjectQuestionUseCase
+
+Vamos a empezar creando el caso de uso de la pregunta.
+
+Primero, como siempre , siguiendo TDD, vamos a empezar con el test askProjectQuestionUseCase.test
+
+Una vez que el test vemos que falla, pasamos a la implementacion:
+
+ - Creamos el puerto AnswerGenerator.
+   
+   > Este puerto representa la pieza que más adelante conectaremos con Genkit. De momento solo necesitamos la interfaz porque el test usa un fake, igual que ya haces con EmbeddingGenerator.
+
+ - Creamos el caso de uso AskProjectQuestionUseCase
+
+Con estas dos implementaciones, el test ya pasa.
+
+
+Ahora vamos a incluir nuevos text en el fichero de text:
+
+1.Sobre la validación de pregunta vacía, para que no pueda ser una pregunta vacia:
+
+ - Una vez añadido el nuevo test y visto que falla
+ - Incluimos la nueva implementacion en el caso de uso 
+
+2.Si el usuario no es dueño del proyecto, no puede preguntar sobre él
+
+ - Est test pasa directamente porque el comportamiento ya esta cubierto
+
+3. Este text es muy IMPORTANTE, en este evitaremos respuestas inventadas con proyecto sin chunks relevantes / sin embeddings.
+
+ - La idea es: pregunta válida -> embedding de la pregunta ->búsqueda semántica -> 0 chunks encontrados -> NO llamar a la IA ->devolver respuesta segura.
+ - Esto es importante porque si llamamos a la IA sin contexto, puede inventarse una respuesta. En un RAG, si no hay contexto recuperado, lo más seguro es decir que no hay información suficiente.
+
+ - Una vez añadido el nuevo test y visto que falla
+ - Incluimos la nueva implementacion en el caso de uso
+
+4. Puede pasar que findSimilarByProjectId devuelva varios chunks del mismo archivo y mismas líneas. Como SimilarCodeChunk trae path, startLine y endLine, podemos usar eso para construir las fuentes de la respuesta.
+
+  - Una vez añadido el nuevo test y visto que falla
+ - Incluimos la nueva implementacion en el caso de uso
+
+
+Fase 9.2 - Endpoint y HTTP
+
+POST /projects/:id/ask
+
+Empezamos creando el test del ednpoint, en el fichero de text que ya tenemos : projectEndpoints
+creamos un nuevo test para el endpoint POST /projects/:id/ask.
+
+El primer text:
+
+ - Este primer test no sube ZIP ni prepara chunks. Por eso esperamos la respuesta segura:
+ 
+        No tengo suficiente información del proyecto para responder a esa pregunta.
+
+ - Así comprobamos primero que el endpoint existe, está autenticado y llama al caso de uso. Como el proyecto no tiene chunks ni embeddings, el caso de uso no debe llamar a la IA real.
+
+
+Ahora vamos con la implementacion para que este test pase, vamos a tocar 3 sitios:
+
+        1. container.ts : Para instanciar y conectar lo nuevo
+        2. projectController.ts : Para que pueda usar lo nuevo mediante un metodo nuevo
+        3. projectRoutes.ts : Para crear el controller con lo nuevo
+
+
+Una vez terminada esta implementacion, ya pasan todos los test.
+
+Ahora toca asegurar los casos HTTP básicos mediante nuevos test:
+
+- Sin token debe devolver 401: 
+ > Este test pasa dorectamente
+
+- Comprueba que un usuario no pueda preguntar sobre el proyecto de otro. La regla sigue siendo la misma que ya usas en proyectos, si no es suyo, se responde 404, no 403: 
+ > este text pasa directamente
+
+- Ahora toca validar el body del endpoint: 
+ > Este test falla porque tdavia no hay shcema para la pregunta ni el ruter no usa el middleware
+ > Nos ponemos con la implementacion para que el test pase: añadimos dentro del archivo del schema de project askProjectQuestionSchema, añadimos el validatebody con el schema al ruter
+
+- Ahora comprobaremos: crear usuario -> crear proyecto -> subir ZIP -> se crean ProjectFiles + CodeChunks + Embeddings -> preguntar al proyecto -> recibir answer + sources:
+
+ > En este test, De momento en el container habiamos dejado un answerGenerator temporal que devuelve: Respuesta generada por IA pendiente de implementar. Eso está bien por ahora. Este test no valida la calidad de la IA todavía; valida que el endpoint ya usa el flujo RAG real:
+
+  > Este test pasa directamente
+
+
+Fase 9.3- Implementar el puerto
+
+Hastaaqui ya tenemos 
+
+✅ AskProjectQuestionUseCase
+✅ POST /projects/:id/ask
+✅ Validación de auth
+✅ Validación de pregunta vacía
+✅ Protección por usuario/proyecto
+✅ Fallback si no hay chunks
+✅ Respuesta con sources si hay chunks
+✅ Flujo HTTP usando chunks subidos por ZIP
+
+Ahora toca quitar la  pieza temporal del container e implementar el puerto con genkit.
+
+Empezamos creando el test de la implementacion:
+
+Este test no llama a Gemini real. Usa un FakeAi.
+
+Está comprobando que GenkitAnswerGenerator:
+
+- recibe la pregunta del usuario
+- recibe los chunks relevantes
+- construye un prompt con:
+  - pregunta
+  - path del archivo
+  - líneas del chunk
+  - contenido del chunk
+  - instrucción para no inventar
+- devuelve el texto generado por el modelo
+
+Una vez que el tes falle , implementamos el puerto y ya el test pasa.
+
+Una vez que el test pasa ahora toca modificar el container, quitar la pieza temporal y poner que use esta nueva
+
+Una vez que ya todo este cuadrado y los test pasen lo que vamos a hacer es cerrar esto añadiendo nuevos test de segurida:
+
+1. si Genkit devuelve una respuesta vacía -> DevMind no debe devolver "" -> debe devolver una respuesta segura:
+ - El test falla 
+ - Nos ponemos con la implementacion
+
 
 
 
