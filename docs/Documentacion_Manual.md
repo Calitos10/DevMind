@@ -3248,7 +3248,81 @@ Y además conviene detectar si el contenido tiene bytes nulos: 0x00
 
 Si tiene bytes nulos, se considera binario y se salta.
 
-Lo que haremos ahora es hacer este refactor
+El error se encuentra aqui:
+
+ - Ahora mismo AdmZipExtractor convierte todas las entradas del ZIP a string entry.getData().toString("utf8"), sin distinguir texto de binario. Luego UploadProjectZipUseCase filtra carpetas ignoradas, pero no filtra archivos binarios, y acaba guardando content en PostgreSQL.
+
+
+Ahora vamos a implementar la solucion.
+
+Primero, siguiendo TDD vamos a añadir un test a uploadProjectZipUseCase en el cual probaremos que por ejemplo assets/logo.png y .DS_Store no se guarden, este test fallara porque de momento si que intenta guardarlo.
+
+Una vez que vemos el rojo, empezamos con la implementacion:
+
+ - En el caso de uso : uploadProjectZipUseCase vamos a añadir la implementacion para que la app ignore archivos como imágenes, PDFs, ZIPs internos, binarios y cualquier archivo cuyo contenido tenga \u0000, que es justo lo que PostgreSQL no acepta en campos TEXT.
+
+Con esto los test pasan y el problema de error esta solucionado.
+
+Fase 9.5
+
+De nuevo probando el proyecto, y arreglado el anterior error, vuelve a surgir un problea.
+
+Nos muestra que hemos sobrepasado la cuota/limite de peticiones.
+
+Ahora mismo, cuando subimos un zip relativamente grande, se generarn muchos archivos , de estos muchos chunks y apartir de estos chunks se generan muchos embeddings.
+
+Esto esta haciendo muchas llamadas seguidas a Gemini dentro de una sola request HTTP; y el embedding de google no puedes generar todos los embeddings durante la propia petición de subida del ZIP.
+
+La solución profesional es cambiar el flujo a esto:
+
+        POST /projects/:id/upload
+        ↓
+        extrae ZIP
+        ↓
+        guarda ProjectFiles
+        ↓
+        genera CodeChunks
+        ↓
+        marca el proyecto como "indexing"
+        ↓
+        responde rápido al frontend
+        ↓
+        un worker en segundo plano genera embeddings poco a poco
+        ↓
+        cuando termina, marca el proyecto como "ready"
+
+Es decir: la subida del ZIP no debe esperar a que todos los embeddings estén creados.
+
+Este problema es un problema que hay que solucionar, porque aunque par proyectos de zip pequeño, la api funciona perfectamente, DevMind esta pensado para organizaciones o perosnas que trabajan en proyectos relativamente grandes.
+
+Este problema lo solucionaremos incluyendo una fase 10 que sustituye a la anterior 10 y ahora sera:
+
+FASE 10 — Indexación asíncrona y robusta
+
+        El flujo sería:
+
+        Usuario sube ZIP
+        ↓
+        DevMind guarda archivos y chunks
+        ↓
+        DevMind crea un IndexingJob
+        ↓
+        Frontend recibe respuesta:
+        "Proyecto subido, indexación en progreso"
+        ↓
+        Worker procesa chunks pendientes
+        ↓
+        Genera embeddings con límite de velocidad
+        ↓
+        Si Gemini devuelve 429, pausa/reintenta
+        ↓
+        Frontend puede consultar estado
+        ↓
+        Cuando termina:
+        project.indexingStatus = "ready"
+
+
+
 
 
 

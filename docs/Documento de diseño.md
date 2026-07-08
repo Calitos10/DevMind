@@ -5337,13 +5337,13 @@ Una vez hecho esto, comprobamos que todos los tests siguen pasando.
 
 ---
 
-# Tests de seguridad y robustez
+## Tests de seguridad y robustez
 
 Para cerrar esta parte, añadimos nuevos tests de seguridad.
 
 ---
 
-## 1. Si Genkit devuelve una respuesta vacía, DevMind debe devolver una respuesta segura
+### 1. Si Genkit devuelve una respuesta vacía, DevMind debe devolver una respuesta segura
 
 Puede pasar que Genkit devuelva una respuesta vacía.
 
@@ -5377,7 +5377,7 @@ Después implementamos la lógica necesaria para que, si Genkit devuelve una res
 
 ---
 
-# Resultado de la Fase 9.3
+## Resultado de la Fase 9.3
 
 Al terminar esta subfase tenemos:
 
@@ -5526,4 +5526,332 @@ DevMind ya puede:
 ```
 
 Con esto queda cerrada la primera versión funcional del flujo IA/RAG de DevMind.
+
+## FASE 9.4 — Filtrado de archivos binarios en la subida de ZIP
+
+### Contexto
+
+Una vez terminada la implementación anterior, se ha probado el proyecto de la API usando un frontend básico que consume la API.
+
+Durante esa prueba se ha detectado un error al subir el propio ZIP del proyecto DevMind.
+
+El error detectado es:
+
+```txt
+DevMind está intentando guardar en PostgreSQL un archivo que no es texto limpio UTF-8.
+```
+
+Esto ocurre porque la API intenta guardar en PostgreSQL archivos que no deberían tratarse como texto.
+
+---
+
+### Problema detectado
+
+Al subir un ZIP del propio proyecto DevMind, la API lanza un error.
+
+El problema es que hay que mejorar el extractor/filtro del ZIP para que DevMind no intente guardar archivos binarios.
+
+Ahora mismo ya se ignoran carpetas como:
+
+```txt
+node_modules
+.git
+dist
+build
+coverage
+.next
+```
+
+Pero eso no basta.
+
+También necesitamos ignorar archivos no textuales.
+
+Además, conviene detectar si el contenido tiene bytes nulos:
+
+```txt
+0x00
+```
+
+Si un archivo tiene bytes nulos, se considera binario y se salta.
+
+---
+
+### Origen concreto del error
+
+El error se encuentra en el extractor real del ZIP.
+
+Ahora mismo `AdmZipExtractor` convierte todas las entradas del ZIP a string usando algo parecido a:
+
+```ts
+entry.getData().toString("utf8")
+```
+
+El problema es que lo hace sin distinguir entre archivos de texto y archivos binarios.
+
+Después, `UploadProjectZipUseCase` filtra carpetas ignoradas, pero no filtra archivos binarios.
+
+Como consecuencia, acaba intentando guardar el `content` en PostgreSQL aunque el archivo no sea texto limpio.
+
+El flujo problemático actual es:
+
+```txt
+ZIP
+↓
+AdmZipExtractor lee todas las entradas
+↓
+convierte todo a string con UTF-8
+↓
+UploadProjectZipUseCase filtra carpetas ignoradas
+↓
+pero no filtra archivos binarios
+↓
+intenta guardar binarios como TEXT en PostgreSQL
+↓
+error
+```
+
+---
+
+### Solución planteada
+
+La solución consiste en mejorar el filtrado de archivos durante la subida del ZIP.
+
+DevMind debe ignorar:
+
+```txt
+imágenes
+PDFs
+ZIPs internos
+archivos binarios
+archivos cuyo contenido tenga \u0000
+```
+
+Esto evita que la aplicación intente guardar en PostgreSQL contenido que no es texto válido.
+
+El caso importante es `\u0000`, porque PostgreSQL no acepta caracteres nulos dentro de campos `TEXT`.
+
+---
+
+### Implementación siguiendo TDD
+
+Como siempre, seguimos TDD.
+
+Primero añadimos un test en:
+
+```txt
+uploadProjectZipUseCase
+```
+
+El test debe comprobar que archivos como estos no se guardan:
+
+```txt
+assets/logo.png
+.DS_Store
+```
+
+La idea del test es:
+
+```txt
+Dado un ZIP que contiene archivos de texto y archivos binarios
+Cuando se procesa el ZIP
+Entonces DevMind solo guarda los archivos textuales válidos
+Y omite imágenes, .DS_Store y otros binarios
+```
+
+Este test falla al principio, porque de momento DevMind sí intenta guardar esos archivos.
+
+---
+
+### Implementación para corregir el error
+
+Una vez visto el test en rojo, se implementa la solución en:
+
+```txt
+UploadProjectZipUseCase
+```
+
+La implementación añade lógica para ignorar archivos como:
+
+```txt
+imágenes
+PDFs
+ZIPs internos
+archivos binarios
+archivos cuyo contenido tenga \u0000
+```
+
+Con esto, DevMind deja de intentar guardar contenido binario en PostgreSQL.
+
+---
+
+### Resultado
+
+Después de implementar el filtrado, los tests pasan.
+
+Con esto, el problema queda solucionado.
+
+El nuevo comportamiento es:
+
+```txt
+ZIP subido
+↓
+se extraen entradas
+↓
+se ignoran carpetas no deseadas
+↓
+se ignoran archivos binarios o no textuales
+↓
+solo se guardan archivos de texto válidos
+↓
+PostgreSQL no recibe contenido inválido
+```
+
+---
+
+### Conclusión de la Fase 9.4
+
+En esta subfase se ha corregido un problema real detectado durante pruebas con frontend.
+
+DevMind ya no intenta guardar archivos binarios como si fueran texto.
+
+Esto hace que la subida de ZIP sea más robusta y más segura frente a proyectos reales, que normalmente pueden contener imágenes, ficheros del sistema, PDFs, archivos comprimidos internos u otros binarios.
+
+Queda implementado:
+
+```txt
+✅ Detección de archivos binarios
+✅ Ignorar archivos no textuales
+✅ Ignorar archivos con bytes nulos
+✅ Evitar errores de PostgreSQL al guardar contenido inválido
+✅ Test unitario para comprobar que archivos como logo.png y .DS_Store no se guardan
+✅ UploadProjectZipUseCase más robusto
+```
+
+---
+
+## FASE 9.5 — Detección del problema de cuota/límite al generar embeddings
+
+### Contexto
+
+Después de solucionar el problema anterior, se volvió a probar el proyecto.
+
+Esta vez, al subir un ZIP más grande, apareció un nuevo problema.
+
+El sistema muestra que se ha sobrepasado la cuota o el límite de peticiones.
+
+---
+
+### Problema detectado
+
+Ahora mismo, cuando se sube un ZIP relativamente grande, DevMind genera muchos elementos en cadena:
+
+```txt
+ZIP grande
+↓
+muchos ProjectFiles
+↓
+muchos CodeChunks
+↓
+muchos embeddings
+↓
+muchas llamadas seguidas a Gemini
+```
+
+El problema es que todos esos embeddings se generan dentro de una sola request HTTP.
+
+Esto provoca demasiadas llamadas seguidas a Gemini durante la propia petición de subida del ZIP.
+
+El flujo actual funciona bien con ZIPs pequeños, pero no escala bien para proyectos grandes.
+
+---
+
+### Por qué esto es un problema importante
+
+DevMind está pensado para organizaciones o personas que trabajan con proyectos relativamente grandes.
+
+Por eso, aunque con proyectos pequeños la API funcione correctamente, este comportamiento no es suficiente para un uso realista.
+
+El problema principal es:
+
+```txt
+No se pueden generar todos los embeddings durante la propia petición HTTP de subida del ZIP.
+```
+
+La subida del ZIP no debería quedarse bloqueada esperando a que se generen todos los embeddings.
+
+Además, si Gemini devuelve un error de cuota o límite, como un `429`, toda la subida puede fallar aunque los archivos y chunks ya se hayan procesado correctamente.
+
+---
+
+### Flujo actual problemático
+
+El flujo actual sería algo parecido a esto:
+
+```txt
+POST /projects/:id/upload
+↓
+extrae ZIP
+↓
+guarda ProjectFiles
+↓
+genera CodeChunks
+↓
+genera embeddings inmediatamente
+↓
+hace muchas llamadas seguidas a Gemini
+↓
+puede superar la cuota/límite
+↓
+la request HTTP falla o tarda demasiado
+```
+
+---
+
+### Solución profesional planteada
+
+La solución profesional es cambiar el flujo para que la generación de embeddings sea asíncrona.
+
+El nuevo flujo debería ser:
+
+```txt
+POST /projects/:id/upload
+↓
+extrae ZIP
+↓
+guarda ProjectFiles
+↓
+genera CodeChunks
+↓
+marca el proyecto como "indexing"
+↓
+responde rápido al frontend
+↓
+un worker en segundo plano genera embeddings poco a poco
+↓
+cuando termina, marca el proyecto como "ready"
+```
+
+Es decir:
+
+```txt
+La subida del ZIP no debe esperar a que todos los embeddings estén creados.
+```
+
+---
+
+### Nueva fase necesaria
+
+Este problema se solucionará creando una nueva fase.
+
+La nueva fase sustituye a la anterior Fase 10 prevista.
+
+Ahora la Fase 10 será:
+
+```txt
+FASE 10 — Indexación asíncrona y robusta
+```
+
+---
+
+# FASE 10 — Indexación asíncrona y robusta
 

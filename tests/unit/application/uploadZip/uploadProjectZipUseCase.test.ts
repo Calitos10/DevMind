@@ -785,4 +785,73 @@ describe("UploadProjectZipUseCase", () => {
       ),
     ).toBeUndefined();
   });
+  it("ignores binary files from the uploaded zip", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const projectFileRepository = new FakeProjectFileRepository();
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "My project",
+      description: "Test project",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    const zipExtractor = new FakeZipExtractor([
+      {
+        path: "src/index.ts",
+        content: "console.log('hello');",
+      },
+      {
+        path: "assets/logo.png",
+        content: "\u0000PNG binary content",
+      },
+      {
+        path: ".DS_Store",
+        content: "\u0000MacOS binary metadata",
+      },
+    ]);
+
+    const idGenerator = new FakeSequentialIdGenerator(["file-1"]);
+
+    const generateCodeChunksForProjectFileUseCase =
+      new FakeGenerateCodeChunksForProjectFileUseCase();
+
+    const { useCase } = createUploadProjectZipUseCase({
+      projectRepository,
+      projectFileRepository,
+      zipExtractor,
+      idGenerator,
+      generateCodeChunksForProjectFileUseCase,
+    });
+
+    const result = await useCase.execute({
+      projectId: "project-1",
+      ownerId: "user-1",
+      zipBuffer: Buffer.from("fake zip content"),
+    });
+
+    expect(result.summary).toMatchObject({
+      created: 1,
+      updated: 0,
+      deleted: 0,
+      unchanged: 0,
+    });
+
+    expect(result.files.created).toHaveLength(1);
+
+    expect(result.files.created[0]).toMatchObject({
+      id: "file-1",
+      projectId: "project-1",
+      path: "src/index.ts",
+      language: "typescript",
+      content: "console.log('hello');",
+    });
+
+    expect(projectFileRepository.projectFiles).toHaveLength(1);
+
+    expect(
+      generateCodeChunksForProjectFileUseCase.generatedProjectFilePaths,
+    ).toEqual(["src/index.ts"]);
+  });
 });

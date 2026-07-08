@@ -40,7 +40,9 @@ export class UploadProjectZipUseCase {
     const extractedFiles = await this.zipExtractor.extract(input.zipBuffer);
 
     const validFiles = extractedFiles.filter(
-      (extractedFile) => !isIgnoredProjectFilePath(extractedFile.path),
+      (extractedFile) =>
+        !isIgnoredProjectFilePath(extractedFile.path) &&
+        !isBinaryProjectFile(extractedFile),
     );
 
     if (validFiles.length === 0) {
@@ -172,4 +174,47 @@ function isIgnoredProjectFilePath(path: string): boolean {
   const pathParts = path.replaceAll("\\", "/").split("/");
 
   return pathParts.some((part) => ignoredFolders.has(part));
+}
+
+function isBinaryProjectFile(file: { path: string; content: string }): boolean {
+  return hasBinaryExtension(file.path) || hasNullByte(file.content);
+}
+
+function hasNullByte(content: string): boolean {
+  return content.includes("\u0000");
+}
+
+function hasBinaryExtension(path: string): boolean {
+  const normalizedPath = path.toLowerCase();
+
+  const binaryExtensions = [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".tar",
+    ".exe",
+    ".dll",
+    ".so",
+    ".dylib",
+    ".db",
+    ".sqlite",
+    ".mp4",
+    ".mov",
+    ".mp3",
+    ".wav",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".otf",
+  ];
+
+  return binaryExtensions.some((extension) =>
+    normalizedPath.endsWith(extension),
+  );
 }

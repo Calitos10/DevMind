@@ -14,6 +14,7 @@ const googleKey = process.env.GEMINI_API_KEY;
 
 export const ai = genkit({
   plugins: [googleAI({ apiKey: googleKey })],
+  model: googleAI.model("gemini-flash-latest"),
 });
 
 export const codeEmbeddingEmbedder = googleAI.embedder("gemini-embedding-001");
