@@ -32,8 +32,8 @@ Variables clave en `.env`:
 ```txt
 JWT_SECRET                     — obligatorio, la app no arranca sin ella
 DATABASE_URL                   — cadena de conexión a PostgreSQL
-MAX_ZIP_SIZE_MB                — tamaño máximo del ZIP subido (default 20)
-MAX_ZIP_UNCOMPRESSED_SIZE_MB   — tamaño máximo descomprimido, protección anti zip-bomb (default 200)
+MAX_ZIP_SIZE_MB                — tamaño máximo del ZIP subido (default 200)
+MAX_ZIP_UNCOMPRESSED_SIZE_MB   — tamaño máximo descomprimido, protección anti zip-bomb (default 1000)
 AUTH_RATE_LIMIT_MAX            — intentos permitidos en /auth/register y /auth/login (default 10)
 AUTH_RATE_LIMIT_WINDOW_MINUTES — ventana de tiempo del límite anterior (default 15)
 ```

@@ -158,6 +158,34 @@ components:
         - hash
         - createdAt
 
+    AskProjectQuestionResult:
+      type: object
+      properties:
+        answer:
+          type: string
+          example: El registro de usuario se realiza en RegisterUserUseCase.
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                example: src/auth/registerUserUseCase.ts
+              startLine:
+                type: integer
+                example: 10
+              endLine:
+                type: integer
+                example: 45
+            required:
+              - path
+              - startLine
+              - endLine
+      required:
+        - answer
+        - sources
+
 paths:
   /health:
     get:
@@ -487,6 +515,67 @@ paths:
                 $ref: "#/components/schemas/UploadZipResult"
         "400":
           description: Archivo ZIP no adjuntado o sin archivos válidos tras filtrar carpetas ignoradas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects/{id}/ask:
+    post:
+      tags:
+        - Project Questions
+      summary: Preguntar en lenguaje natural sobre el código de un proyecto
+      description: >
+        Recibe una pregunta en lenguaje natural sobre un proyecto propio.
+        Genera el embedding de la pregunta, busca en PostgreSQL/pgvector los
+        code chunks más parecidos dentro de ese proyecto (findSimilarByProjectId)
+        y usa esos fragmentos como contexto para generar una respuesta.
+        Si no hay chunks relevantes indexados para el proyecto, devuelve una
+        respuesta de fallback y una lista de fuentes vacía en lugar de llamar
+        al generador de respuestas.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                question:
+                  type: string
+                  minLength: 1
+                  example: ¿Dónde se registra un usuario?
+              required:
+                - question
+      responses:
+        "200":
+          description: Respuesta generada a partir del código del proyecto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AskProjectQuestionResult"
+        "400":
+          description: Body inválido (pregunta vacía o ausente)
           content:
             application/json:
               schema:

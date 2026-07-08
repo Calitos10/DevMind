@@ -3223,6 +3223,35 @@ Una vez que ya todo este cuadrado y los test pasen lo que vamos a hacer es cerra
  - Nos ponemos con la implementacion
 
 
+Fase 9.4
+
+Una vez terminado hasta aqui me he puesto a propar el pryecto de api con un frontend basico que consume la api.
+
+En el transcurso de la prueba he detectado un error:
+
+"DevMind está intentando guardar en PostgreSQL un archivo que no es texto limpio UTF-8."
+
+Al subir el propio zip del proyecto de devmind, la api lanza un error , este Hay que mejorar el extractor/filtro del ZIP para que DevMind no intente guardar archivos binarios.
+
+Ahora mismo ya ignoras carpetas como:
+
+        node_modules
+        .git
+        dist
+        build
+        coverage
+        .next
+
+Pero eso no basta. También necesitas ignorar archivos no textuales.
+
+Y además conviene detectar si el contenido tiene bytes nulos: 0x00
+
+Si tiene bytes nulos, se considera binario y se salta.
+
+Lo que haremos ahora es hacer este refactor
+
+
+
 
 
 

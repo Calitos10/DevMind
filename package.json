@@ -15,7 +15,8 @@
     "start": "node dist/src/main.js",
     "typecheck": "tsc --noEmit",
     "test": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest run",
-    "test:watch": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest"
+    "test:watch": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest",
+    "migrate": "tsx scripts/run-migrations.ts"
   },
   "dependencies": {
     "@genkit-ai/anthropic": "^0.3.0",

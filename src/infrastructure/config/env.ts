@@ -12,9 +12,9 @@ export const env = {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   },
   upload: {
-    maxZipSizeMb: Number(process.env.MAX_ZIP_SIZE_MB) || 20,
+    maxZipSizeMb: Number(process.env.MAX_ZIP_SIZE_MB) || 200,
     maxZipUncompressedSizeMb:
-      Number(process.env.MAX_ZIP_UNCOMPRESSED_SIZE_MB) || 200,
+      Number(process.env.MAX_ZIP_UNCOMPRESSED_SIZE_MB) || 1000,
   },
   authRateLimit: {
     max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 10,
