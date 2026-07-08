@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: DevMind API
   description: API backend para indexar proyectos software y consultarlos en lenguaje natural.
-  version: 1.2.0
+  version: 1.3.0
 
 servers:
   - url: http://localhost:3000
@@ -20,6 +20,8 @@ tags:
     description: Gestión de archivos dentro de un proyecto
   - name: Upload ZIP
     description: Subida masiva de archivos desde un ZIP comprimido
+  - name: Indexing
+    description: Generación de embeddings de un proyecto y consulta de su progreso
   - name: Project Questions
     description: Preguntas en lenguaje natural sobre el código de un proyecto (RAG)
 
@@ -157,6 +159,45 @@ components:
         - size
         - hash
         - createdAt
+
+    ProjectIndexingResult:
+      type: object
+      properties:
+        projectId:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+          example: completed
+        totalChunks:
+          type: integer
+          example: 1
+        processedChunks:
+          type: integer
+          example: 1
+        failedChunks:
+          type: integer
+          example: 0
+      required:
+        - projectId
+        - status
+        - totalChunks
+        - processedChunks
+        - failedChunks
+
+    ProjectIndexingStatus:
+      allOf:
+        - $ref: "#/components/schemas/ProjectIndexingResult"
+        - type: object
+          properties:
+            progress:
+              type: integer
+              minimum: 0
+              maximum: 100
+              example: 100
+              description: Porcentaje de chunks procesados sobre el total (0 si aún no hay job de indexación).
+          required:
+            - progress
 
     AskProjectQuestionResult:
       type: object
@@ -480,9 +521,13 @@ paths:
         por ruta y hash: crea los archivos nuevos, actualiza los que cambiaron,
         deja intactos los que no cambiaron (unchanged) y borra los archivos
         existentes cuya ruta ya no está presente en el ZIP.
-        Los archivos creados o actualizados se trocean y se indexan
-        internamente como fragmentos de código (code chunks) para su uso
-        futuro en búsqueda semántica; este proceso no altera la respuesta.
+        Los archivos creados o actualizados se trocean en fragmentos de código
+        (code chunks) de forma síncrona. Si hubo archivos creados, actualizados
+        o eliminados, además se programa en segundo plano (sin bloquear la
+        respuesta) la generación/regeneración de embeddings del proyecto;
+        el progreso de ese proceso se puede consultar con
+        `GET /projects/{id}/indexing-status` o forzar de forma síncrona con
+        `POST /projects/{id}/index`.
         Devuelve 400 si no se adjunta archivo o si el ZIP no contiene archivos válidos.
       security:
         - bearerAuth: []
@@ -532,6 +577,88 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /projects/{id}/index:
+    post:
+      tags:
+        - Indexing
+      summary: Generar (o regenerar) los embeddings de un proyecto
+      description: >
+        Recorre todos los code chunks existentes del proyecto y genera su
+        embedding vectorial de forma síncrona, guardando el progreso en un
+        job de indexación (`project_indexing_jobs`). La llamada no devuelve
+        la respuesta hasta que termina de procesar todos los chunks (o falla).
+        Este mismo proceso se dispara automáticamente en segundo plano tras
+        `POST /projects/{id}/upload` cuando hay archivos creados, actualizados
+        o eliminados; este endpoint permite forzarlo manualmente y esperar
+        su resultado.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      responses:
+        "200":
+          description: Indexación completada (o fallida) con su resumen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectIndexingResult"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects/{id}/indexing-status:
+    get:
+      tags:
+        - Indexing
+      summary: Consultar el progreso de indexación (embeddings) de un proyecto
+      description: >
+        Devuelve el estado del último job de indexación del proyecto:
+        `pending` (todavía no se ha indexado nunca), `processing`,
+        `completed` o `failed`, junto con el número de chunks totales,
+        procesados, fallidos y el progreso en porcentaje.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      responses:
+        "200":
+          description: Estado de indexación del proyecto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectIndexingStatus"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /projects/{id}/ask:
     post:
       tags:
@@ -542,9 +669,12 @@ paths:
         Genera el embedding de la pregunta, busca en PostgreSQL/pgvector los
         code chunks más parecidos dentro de ese proyecto (findSimilarByProjectId)
         y usa esos fragmentos como contexto para generar una respuesta.
-        Si no hay chunks relevantes indexados para el proyecto, devuelve una
+        Si el proyecto todavía no tiene embeddings generados (por ejemplo, la
+        indexación en segundo plano tras la subida del ZIP aún no ha terminado)
+        no habrá chunks relevantes que encontrar; en ese caso se devuelve una
         respuesta de fallback y una lista de fuentes vacía en lugar de llamar
-        al generador de respuestas.
+        al generador de respuestas. Se recomienda comprobar
+        `GET /projects/{id}/indexing-status` antes de preguntar.
       security:
         - bearerAuth: []
       parameters:

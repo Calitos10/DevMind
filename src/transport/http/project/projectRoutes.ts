@@ -18,6 +18,8 @@ const projectController = new ProjectController(
   container.getProjectByIdUseCase,
   container.deleteProjectUseCase,
   container.uploadProjectZipUseCase,
+  container.indexProjectEmbeddingsUseCase,
+  container.getProjectIndexingStatusUseCase,
   container.askProjectQuestionUseCase,
 );
 
@@ -40,6 +42,17 @@ projectRoutes.post(
   authMiddleware,
   upload.single("file"),
   asyncHandler((req, res) => projectController.uploadZip(req, res)),
+);
+
+projectRoutes.post(
+  "/:id/index",
+  authMiddleware,
+  asyncHandler((req, res) => projectController.index(req, res)),
+);
+projectRoutes.get(
+  "/:id/indexing-status",
+  authMiddleware,
+  asyncHandler((req, res) => projectController.getIndexingStatus(req, res)),
 );
 
 projectRoutes.get(

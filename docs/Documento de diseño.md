@@ -2531,9 +2531,7 @@ Por ahora mantenemos el contrato actual del caso de uso:
 
 ```ts
 {
-  projectId,
-  filesCreated,
-  files
+  (projectId, filesCreated, files);
 }
 ```
 
@@ -2694,9 +2692,7 @@ Todavía mantenemos la respuesta antigua:
 
 ```ts
 {
-  projectId,
-  filesCreated,
-  files
+  (projectId, filesCreated, files);
 }
 ```
 
@@ -2738,9 +2734,7 @@ Seguimos manteniendo:
 
 ```ts
 {
-  projectId,
-  filesCreated,
-  files
+  (projectId, filesCreated, files);
 }
 ```
 
@@ -2768,9 +2762,7 @@ Ahora mismo, la respuesta que da el caso de uso sigue siendo:
 
 ```ts
 {
-  projectId,
-  filesCreated,
-  files
+  (projectId, filesCreated, files);
 }
 ```
 
@@ -2903,9 +2895,7 @@ Antes esperaban algo como:
 
 ```ts
 {
-  projectId,
-  filesCreated,
-  files
+  (projectId, filesCreated, files);
 }
 ```
 
@@ -2913,9 +2903,7 @@ Pero ahora el caso de uso devuelve:
 
 ```ts
 {
-  projectId,
-  summary,
-  files
+  (projectId, summary, files);
 }
 ```
 
@@ -2982,9 +2970,7 @@ Y la respuesta final debe evolucionar de:
 
 ```ts
 {
-  projectId,
-  filesCreated,
-  files
+  (projectId, filesCreated, files);
 }
 ```
 
@@ -3216,7 +3202,7 @@ Esto importa porque `ProjectFile.content` puede estar vacío y no queremos gener
 Lo más limpio es que un archivo vacío devuelva:
 
 ```ts
-[]
+[];
 ```
 
 Añadimos el test al final del archivo de test.
@@ -4603,7 +4589,6 @@ El sistema puede:
 
 Esto deja el proyecto preparado para el siguiente gran paso: usar esos chunks relevantes como contexto para que la IA pueda responder preguntas sobre el proyecto.
 
-
 # FASE 9 — IA/RAG: preguntas sobre el proyecto
 
 ## Objetivo de la fase
@@ -4669,7 +4654,7 @@ Vamos a empezar creando el caso de uso encargado de responder preguntas sobre un
 El caso de uso será:
 
 ```ts
-AskProjectQuestionUseCase
+AskProjectQuestionUseCase;
 ```
 
 Su responsabilidad será coordinar todo el flujo RAG:
@@ -4732,7 +4717,7 @@ Para que el test pase, creamos dos piezas:
 Creamos el puerto:
 
 ```ts
-AnswerGenerator
+AnswerGenerator;
 ```
 
 Este puerto representa la pieza que más adelante conectaremos con Genkit.
@@ -4760,7 +4745,7 @@ implementación real con Genkit
 Creamos el caso de uso:
 
 ```ts
-AskProjectQuestionUseCase
+AskProjectQuestionUseCase;
 ```
 
 Con la implementación inicial, el primer test ya pasa.
@@ -5238,13 +5223,13 @@ Ahora toca quitar la pieza temporal del container e implementar el puerto real c
 Vamos a crear una implementación real del puerto:
 
 ```ts
-AnswerGenerator
+AnswerGenerator;
 ```
 
 La implementación será algo como:
 
 ```ts
-GenkitAnswerGenerator
+GenkitAnswerGenerator;
 ```
 
 Su responsabilidad será:
@@ -5314,7 +5299,7 @@ Esto reduce el riesgo de respuestas inventadas.
 Una vez que el test falla, implementamos el puerto real:
 
 ```ts
-GenkitAnswerGenerator
+GenkitAnswerGenerator;
 ```
 
 Cuando el test pasa, ya tenemos conectada la generación de respuestas con Genkit a nivel de infraestructura.
@@ -5583,7 +5568,7 @@ El error se encuentra en el extractor real del ZIP.
 Ahora mismo `AdmZipExtractor` convierte todas las entradas del ZIP a string usando algo parecido a:
 
 ```ts
-entry.getData().toString("utf8")
+entry.getData().toString("utf8");
 ```
 
 El problema es que lo hace sin distinguir entre archivos de texto y archivos binarios.
@@ -5855,3 +5840,1683 @@ FASE 10 — Indexación asíncrona y robusta
 
 # FASE 10 — Indexación asíncrona y robusta
 
+## 1. Problema detectado
+
+Hasta este punto, DevMind funcionaba así:
+
+```txt
+Usuario sube ZIP
+↓
+DevMind extrae archivos
+↓
+Guarda ProjectFiles
+↓
+Genera CodeChunks
+↓
+Genera embeddings de cada chunk llamando a Gemini
+↓
+Responde al frontend
+```
+
+Todo esto ocurría dentro de la misma petición HTTP:
+
+```http
+POST /projects/:id/upload
+```
+
+En el código, `UploadProjectZipUseCase` guardaba los archivos y después llamaba a:
+
+```ts
+generateCodeChunksForProjectFileUseCase.execute(...)
+```
+
+para cada archivo creado o actualizado.
+
+Después, dentro del flujo actual, esos chunks acababan generando embeddings.
+
+Para ZIPs pequeños esto funcionaba correctamente. De hecho, con proyectos pequeños ya se había comprobado que el RAG funcionaba.
+
+El problema aparecía con ZIPs grandes:
+
+```txt
+Proyecto grande
+↓
+muchos archivos
+↓
+muchos chunks
+↓
+muchas llamadas seguidas a Gemini
+↓
+Gemini devuelve: 429 Too Many Requests
+```
+
+El problema no era que el RAG estuviera mal diseñado.
+
+El problema era que DevMind estaba intentando hacer demasiado trabajo pesado dentro de una sola petición HTTP.
+
+---
+
+## 2. Solución planteada: indexación asíncrona
+
+Para proyectos grandes necesitamos separar dos procesos:
+
+```txt
+Subir ZIP = guardar archivos y chunks
+```
+
+y después:
+
+```txt
+Indexar proyecto = generar embeddings poco a poco
+```
+
+A esto lo llamamos **indexación asíncrona**.
+
+En este contexto, “asíncrona” significa que la subida del ZIP termina rápido, pero los embeddings se generan después, en segundo plano.
+
+---
+
+## 3. Por qué esta solución arregla el problema
+
+Antes hacíamos esto:
+
+```txt
+300 embeddings seguidos durante la subida
+```
+
+Ahora queremos hacer esto:
+
+```txt
+Subida:
+guarda archivos y chunks
+
+Después:
+genera embeddings poco a poco
+con pausa entre llamadas
+con control de errores
+con progreso
+```
+
+De esta forma, aunque haya muchos chunks, DevMind no rompe la petición HTTP ni agota Gemini de golpe.
+
+---
+
+## 4. Plan de implementación
+
+La Fase 10 se divide en las siguientes subfases:
+
+```txt
+FASE 10.1 — Separar chunks de embeddings
+FASE 10.2 — Crear tabla de estado de indexación
+FASE 10.3 — Crear caso de uso IndexProjectEmbeddingsUseCase
+FASE 10.4 — Crear endpoint para lanzar indexación
+FASE 10.5 — Crear endpoint para consultar estado
+FASE 10.6 — Añadir rate limit interno
+FASE 10.7 — Hacer configurable el delay desde .env
+FASE 10.8 — Lanzar indexación automática en segundo plano
+```
+
+---
+
+# FASE 10.1 — Separar chunks de embeddings
+
+## Objetivo
+
+En esta subfase vamos a separar la generación de chunks de la generación de embeddings.
+
+Hasta ahora, al generar chunks también se generaban embeddings.
+
+Queremos cambiar eso.
+
+La nueva regla será:
+
+```txt
+Generar CodeChunks
+↓
+NO generar embeddings todavía
+```
+
+Los embeddings se generarán después, en un flujo de indexación separado.
+
+---
+
+## Cambio en los tests de GenerateCodeChunksForProjectFileUseCase
+
+El primer test que vamos a cambiar está en:
+
+```txt
+tests/unit/application/codeChunk/generateCodeChunksForProjectFileUseCase.test.ts
+```
+
+Ahora mismo existía este test:
+
+```ts
+it("generates embeddings for saved code chunks", async () => {
+  ...
+});
+```
+
+Ese test ya no representa la nueva arquitectura, así que se elimina.
+
+También se elimina el fake que ya no vamos a utilizar:
+
+```ts
+FakeGenerateEmbeddingForCodeChunkUseCase;
+```
+
+---
+
+## Cambio en la creación del caso de uso
+
+Antes se instanciaba el caso de uso así:
+
+```ts
+const generateEmbeddingForCodeChunkUseCase =
+  new FakeGenerateEmbeddingForCodeChunkUseCase();
+
+const useCase = new GenerateCodeChunksForProjectFileUseCase(
+  codeChunkRepository,
+  codeChunker,
+  idGenerator,
+  generateEmbeddingForCodeChunkUseCase,
+);
+```
+
+Ahora debe quedar así:
+
+```ts
+const useCase = new GenerateCodeChunksForProjectFileUseCase(
+  codeChunkRepository,
+  codeChunker,
+  idGenerator,
+);
+```
+
+Este cambio se aplica en todos los tests donde se instancia `GenerateCodeChunksForProjectFileUseCase`.
+
+Lo normal es que el test falle con algo parecido a:
+
+```txt
+Expected 4 arguments, but got 3
+```
+
+Ese fallo es correcto.
+
+Significa que el test ya está pidiendo la nueva arquitectura, pero la implementación todavía sigue acoplada a embeddings.
+
+---
+
+## Implementación
+
+Para que el test pase, se modifica `GenerateCodeChunksForProjectFileUseCase`.
+
+Se elimina:
+
+```txt
+la dependencia que genera embeddings
+toda la lógica relacionada con generar embeddings
+```
+
+A partir de ahora, este caso de uso solo se encarga de:
+
+```txt
+recibir un ProjectFile
+↓
+dividirlo en CodeChunks
+↓
+guardar los CodeChunks
+```
+
+---
+
+## Cambio en los tests de uploadZipEndpoint
+
+Una vez hecho este cambio, los tests de `uploadZipEndpoint` fallan.
+
+Antes esperaban esto:
+
+```txt
+upload ZIP
+↓
+crea ProjectFiles
+↓
+crea CodeChunks
+↓
+crea Embeddings
+```
+
+Pero ahora la nueva regla es:
+
+```txt
+upload ZIP
+↓
+crea ProjectFiles
+↓
+crea CodeChunks
+↓
+NO crea Embeddings todavía
+```
+
+Por eso se modifican los tests de este fichero.
+
+Cambios realizados:
+
+```txt
+- Se elimina el import de PostgresCodeChunkEmbeddingRepository.
+- Se elimina la función expectEmbeddingForCodeChunk.
+- Se cambian los nombres de los tests que antes hablaban de embeddings.
+- Se quitan todas las comprobaciones de embeddings.
+```
+
+Ahora `POST /projects/:projectId/upload` solo debe crear:
+
+```txt
+ProjectFiles
+CodeChunks
+```
+
+No debe crear embeddings.
+
+---
+
+## Cambio en el test de /ask
+
+También se modifica el test de `projectEndpoint` relacionado con `/ask`.
+
+Después de subir un ZIP, como todavía no hay embeddings, DevMind devuelve correctamente:
+
+```txt
+No tengo suficiente información del proyecto para responder a esa pregunta.
+```
+
+Esto ahora es correcto, porque subir el ZIP ya no genera embeddings automáticamente dentro de la misma petición.
+
+---
+
+## Resultado de la Fase 10.1
+
+Con esto, `UploadProjectZipUseCase` sigue haciendo lo siguiente:
+
+```txt
+extrae archivos
+↓
+filtra archivos válidos
+↓
+guarda ProjectFiles
+↓
+genera CodeChunks
+```
+
+Pero ya no dispara embeddings durante esa misma subida.
+
+Queda cerrado:
+
+```txt
+✅ GenerateCodeChunksForProjectFileUseCase desacoplado de embeddings
+✅ Eliminada la dependencia GenerateEmbeddingForCodeChunkUseCase
+✅ Upload ZIP crea ProjectFiles + CodeChunks
+✅ Upload ZIP ya no crea embeddings
+✅ Tests actualizados a la nueva arquitectura
+✅ /ask devuelve fallback si todavía no hay embeddings
+```
+
+---
+
+# FASE 10.2 — Tabla de estado de indexación
+
+## Objetivo
+
+Ahora que al subir un ZIP ya no se generan embeddings, necesitamos guardar algo que indique el estado de indexación del proyecto.
+
+Necesitamos poder representar estados como:
+
+```txt
+Este proyecto está pendiente de indexar.
+Este proyecto se está indexando.
+Este proyecto ya está completado.
+Este proyecto ha fallado.
+```
+
+Para eso crearemos una tabla nueva:
+
+```txt
+project_indexing_jobs
+```
+
+Esta tabla actúa como una hoja de seguimiento del proceso de indexación.
+
+No guarda:
+
+```txt
+contenido del código
+embeddings
+chunks
+```
+
+Solo guarda el estado del trabajo de indexación.
+
+---
+
+## Nueva entidad y repositorio
+
+Para esta subfase necesitamos crear:
+
+```txt
+Entidad ProjectIndexingJob
+Puerto ProjectIndexingJobRepository
+Adaptador PostgresProjectIndexingJobRepository
+Migración project_indexing_jobs
+```
+
+---
+
+## Primer test del repositorio
+
+Como siempre, empezamos con TDD.
+
+Creamos el test:
+
+```txt
+postgresProjectIndexingJobRepository.test.ts
+```
+
+Este test comprueba:
+
+```txt
+Quiero poder guardar un trabajo de indexación.
+Quiero poder buscarlo después por projectId.
+```
+
+El test falla porque todavía no existen:
+
+```txt
+PostgresProjectIndexingJobRepository
+ProjectIndexingJob
+ProjectIndexingJobRepository
+project_indexing_jobs
+```
+
+---
+
+## Implementación
+
+Para que el test pase, implementamos:
+
+```txt
+1. Entidad projectIndexingJob.ts
+2. Interfaz projectIndexingJobRepository.ts
+3. Migración 007_create_project_indexing_jobs.sql
+4. Adaptador postgresProjectIndexingJobRepository.ts
+```
+
+Después de implementar estas piezas, el test pasa.
+
+---
+
+## Estructura del ProjectIndexingJob
+
+Ahora DevMind puede guardar algo como:
+
+```json
+{
+  "projectId": "project-1",
+  "status": "pending",
+  "totalChunks": 10,
+  "processedChunks": 0,
+  "failedChunks": 0
+}
+```
+
+Esto es la base para que después podamos crear:
+
+```txt
+IndexProjectEmbeddingsUseCase
+```
+
+Este caso de uso será quien genere embeddings poco a poco y vaya actualizando ese estado.
+
+---
+
+## Tests adicionales antes de cerrar la subfase
+
+Antes de pasar a la siguiente subfase, terminamos bien la Fase 10.2 añadiendo dos tests pequeños más.
+
+Esto es necesario porque en la siguiente fase necesitaremos actualizar el progreso:
+
+```txt
+processedChunks: 0
+↓
+processedChunks: 1
+↓
+processedChunks: 2
+↓
+...
+status: completed
+```
+
+Para eso necesitamos asegurarnos de que `update` funciona bien.
+
+También queremos comprobar que, si se borra un proyecto, su job de indexación se borra automáticamente mediante `ON DELETE CASCADE`, igual que ya ocurre con chunks y embeddings.
+
+Añadimos dos tests en:
+
+```txt
+postgresProjectIndexingJobRepository
+```
+
+Los tests comprueban:
+
+```txt
+1. Actualizar un indexing job.
+2. Borrar el job automáticamente si se borra el proyecto.
+```
+
+Con estos tests pasando, cerramos la subfase.
+
+---
+
+## Resultado de la Fase 10.2
+
+Queda implementado:
+
+```txt
+✅ Entidad ProjectIndexingJob creada
+✅ Puerto ProjectIndexingJobRepository creado
+✅ Migración 007_create_project_indexing_jobs.sql creada
+✅ PostgresProjectIndexingJobRepository creado
+✅ Test save + findByProjectId pasa
+✅ Test update pasa
+✅ Test ON DELETE CASCADE pasa
+✅ globalSetup actualizado para limpiar la nueva tabla
+```
+
+Todavía no estamos generando embeddings.
+
+Solo hemos creado la hoja de seguimiento para decir:
+
+```txt
+Este proyecto tiene una indexación pendiente.
+```
+
+---
+
+# FASE 10.3 — IndexProjectEmbeddingsUseCase
+
+## Objetivo
+
+Ahora vamos a crear un nuevo caso de uso:
+
+```txt
+IndexProjectEmbeddingsUseCase
+```
+
+Este caso de uso hará lo siguiente:
+
+```txt
+recibe projectId + ownerId
+↓
+comprueba que el proyecto pertenece al usuario
+↓
+busca los chunks del proyecto
+↓
+crea un ProjectIndexingJob
+↓
+genera embeddings para cada chunk
+↓
+actualiza el progreso
+↓
+marca la indexación como completed
+```
+
+Muy importante:
+
+```txt
+No vamos a volver a meter embeddings dentro del upload.
+```
+
+---
+
+## Primer test del caso de uso
+
+Como siempre, empezamos con los tests.
+
+Creamos el fichero:
+
+```txt
+indexProjectEmbeddingsUseCase.test.ts
+```
+
+El primer test unitario comprueba el caso feliz:
+
+```txt
+Si un proyecto tiene 2 chunks,
+IndexProjectEmbeddingsUseCase genera embeddings para los 2 chunks
+y marca el job como completed.
+```
+
+El test falla porque `IndexProjectEmbeddingsUseCase` todavía no existe.
+
+---
+
+## Implementación inicial
+
+Para implementar el caso de uso necesitamos que `CodeChunkRepository` pueda buscar chunks por proyecto.
+
+Por eso añadimos un nuevo método al repositorio de chunks:
+
+```ts
+findByProjectId(projectId: string): Promise<CodeChunk[]>;
+```
+
+Después implementamos `IndexProjectEmbeddingsUseCase`.
+
+El flujo queda así:
+
+```txt
+IndexProjectEmbeddingsUseCase
+↓
+comprueba que el proyecto pertenece al usuario
+↓
+busca todos los chunks del proyecto
+↓
+crea un ProjectIndexingJob en processing
+↓
+genera embedding chunk 1
+↓
+actualiza processedChunks a 1
+↓
+genera embedding chunk 2
+↓
+actualiza processedChunks a 2
+↓
+marca el job como completed
+```
+
+Todavía no añadimos endpoint.
+
+---
+
+## Test de fallo durante la generación de embeddings
+
+Antes de cerrar, añadimos un test de seguridad y robustez.
+
+El test comprueba:
+
+```txt
+Si falla un embedding,
+marca el job como failed.
+```
+
+Este test falla al principio.
+
+El fallo es correcto, porque el caso de uso probablemente hacía esto:
+
+```txt
+chunk 1 OK
+chunk 2 falla
+↓
+lanza error
+↓
+pero no actualiza el job a failed
+```
+
+---
+
+## Implementación del estado failed
+
+Implementamos la lógica para que, si falla un embedding, el job quede marcado como fallido.
+
+Antes pasaba esto:
+
+```txt
+chunk 1 OK
+chunk 2 falla
+↓
+se lanza error
+↓
+el job se queda en processing
+```
+
+Ahora pasa esto:
+
+```txt
+chunk 1 OK
+processedChunks = 1
+
+chunk 2 falla
+failedChunks = 1
+status = failed
+errorMessage = "Gemini quota exceeded"
+
+después relanza el error
+```
+
+Esto es importante.
+
+Marcamos el job como fallido, pero no ocultamos el error.
+
+El endpoint o worker que llame a este caso de uso podrá enterarse de que la indexación falló.
+
+---
+
+## Test de seguridad: proyecto ajeno o inexistente
+
+Añadimos otro test importante:
+
+```txt
+Si el usuario no es dueño del proyecto:
+- no busca chunks
+- no genera embeddings
+- no crea indexing job
+- lanza ProjectNotFoundError
+```
+
+Este test pasa directamente porque la validación de ownership ya estaba bien implementada.
+
+---
+
+## Resultado de la Fase 10.3
+
+Queda cerrado:
+
+```txt
+✅ IndexProjectEmbeddingsUseCase creado
+✅ Caso feliz probado
+✅ Caso de fallo probado
+✅ Caso de proyecto ajeno/inexistente probado
+✅ Todos los tests verdes
+```
+
+Ahora DevMind ya tiene el caso de uso que faltaba:
+
+```txt
+projectId + ownerId
+↓
+validar proyecto
+↓
+buscar chunks
+↓
+crear ProjectIndexingJob
+↓
+generar embeddings
+↓
+actualizar progreso
+↓
+completed / failed
+```
+
+---
+
+# FASE 10.4 — Endpoint manual de indexación
+
+## Objetivo
+
+Vamos a crear el endpoint:
+
+```http
+POST /projects/:id/index
+```
+
+La idea será:
+
+```txt
+Subes ZIP
+↓
+se crean ProjectFiles + CodeChunks
+↓
+llamas a POST /projects/:id/index
+↓
+se generan embeddings
+↓
+el proyecto ya queda consultable por /ask
+```
+
+De momento será manual.
+
+Más adelante lo convertiremos en worker automático.
+
+---
+
+## Primer test del endpoint
+
+Como siempre, empezamos generando el test.
+
+Añadimos un nuevo test dentro del fichero:
+
+```txt
+projectEndpoint
+```
+
+Este test simula el flujo real:
+
+```txt
+1. Registrar usuario
+2. Login
+3. Crear proyecto
+4. Subir ZIP
+5. Crear chunks
+6. Llamar a POST /projects/:id/index
+7. Comprobar que la indexación termina como completed
+```
+
+Todavía no existe la ruta, así que el test debe fallar.
+
+---
+
+## Implementación del endpoint
+
+Una vez vemos el test en rojo, implementamos el endpoint conectando tres piezas:
+
+```txt
+ProjectController
+projectRoutes
+container
+```
+
+---
+
+## Cambios en ProjectController
+
+Modificamos `ProjectController`:
+
+```txt
+- Añadimos el import de IndexProjectEmbeddingsUseCase.
+- Pasamos esta dependencia al constructor.
+- Creamos un nuevo método en el controller: index.
+```
+
+---
+
+## Cambios en projectRoutes
+
+Modificamos `projectRoutes`:
+
+```txt
+- Añadimos container.indexProjectEmbeddingsUseCase al crear el ProjectController.
+- Añadimos la nueva ruta de indexación.
+```
+
+La ruta queda:
+
+```ts
+projectRoutes.post("/:id/index", ...);
+```
+
+---
+
+## Cambios en container
+
+Modificamos `container`:
+
+```txt
+- Añadimos los imports de PostgresProjectIndexingJobRepository e IndexProjectEmbeddingsUseCase.
+- Instanciamos el repositorio.
+- Montamos las dependencias necesarias.
+- Añadimos indexProjectEmbeddingsUseCase al container.
+```
+
+---
+
+## Resultado del caso feliz
+
+Con todo esto, queda cerrado el caso feliz de la Fase 10.4:
+
+```txt
+✅ POST /projects/:id/index creado
+✅ ProjectController conectado
+✅ projectRoutes conectado
+✅ container conectado
+✅ IndexProjectEmbeddingsUseCase se ejecuta desde HTTP
+✅ Upload ZIP crea chunks
+✅ POST /index genera embeddings
+✅ El endpoint devuelve completed
+✅ Tests verdes
+```
+
+---
+
+## Nuevo flujo real
+
+El flujo real queda así:
+
+```txt
+POST /projects/:id/upload
+↓
+guarda ProjectFiles
+↓
+genera CodeChunks
+↓
+NO genera embeddings
+```
+
+Después:
+
+```txt
+POST /projects/:id/index
+↓
+busca chunks
+↓
+genera embeddings
+↓
+actualiza ProjectIndexingJob
+↓
+status completed
+```
+
+Con esto ya solucionamos la separación principal que necesitábamos.
+
+---
+
+## Tests de seguridad del endpoint
+
+Antes de continuar, reforzamos el endpoint con dos tests de seguridad:
+
+```txt
+1. POST /projects/:id/index devuelve 401 sin token.
+2. POST /projects/:id/index devuelve 404 si el proyecto pertenece a otro usuario.
+```
+
+Esto es importante porque la indexación no puede lanzarla cualquiera.
+
+Solo puede lanzarla el dueño del proyecto.
+
+Una vez pasan estos tests, cerramos la subfase.
+
+---
+
+# FASE 10.5 — Endpoint para consultar estado de indexación
+
+## Objetivo
+
+Creamos el endpoint:
+
+```http
+GET /projects/:id/indexing-status
+```
+
+Este endpoint servirá para que el frontend pueda consultar el estado de indexación del proyecto.
+
+Debe devolver algo como:
+
+```json
+{
+  "projectId": "project-1",
+  "status": "completed",
+  "totalChunks": 1,
+  "processedChunks": 1,
+  "failedChunks": 0,
+  "progress": 100
+}
+```
+
+El campo nuevo importante es:
+
+```txt
+progress
+```
+
+Se calcula como:
+
+```txt
+processedChunks / totalChunks * 100
+```
+
+---
+
+## Primer test del endpoint
+
+Empezamos generando el test dentro de:
+
+```txt
+projectEndpoints
+```
+
+Este test hace el flujo completo:
+
+```txt
+1. Crear usuario
+2. Login
+3. Crear proyecto
+4. Subir ZIP
+5. Indexar proyecto
+6. Consultar estado
+7. Esperar completed + progress 100
+```
+
+El test debe fallar porque todavía no existe esta ruta:
+
+```http
+GET /projects/:id/indexing-status
+```
+
+---
+
+## Implementación limpia con caso de uso propio
+
+Para implementarlo de forma limpia, creamos un caso de uso propio:
+
+```txt
+GetProjectIndexingStatusUseCase
+```
+
+La idea será:
+
+```txt
+Controller
+↓
+GetProjectIndexingStatusUseCase
+↓
+ProjectRepository para validar owner
+↓
+ProjectIndexingJobRepository para leer estado
+```
+
+---
+
+## GetProjectIndexingStatusUseCase
+
+El caso de uso hace lo siguiente:
+
+```txt
+1. Comprueba que el proyecto pertenece al usuario.
+2. Busca el ProjectIndexingJob por projectId.
+3. Si existe, devuelve estado + progress.
+4. Si todavía no existe, devuelve pending con progress 0.
+```
+
+---
+
+## Cambios en ProjectController
+
+Modificamos `ProjectController`:
+
+```txt
+- Añadimos el import de GetProjectIndexingStatusUseCase.
+- Lo añadimos al constructor.
+- Creamos un nuevo método para consultar el estado.
+```
+
+---
+
+## Cambios en projectRoutes
+
+Modificamos `projectRoutes`:
+
+```txt
+- Añadimos container.getProjectIndexingStatusUseCase al crear el controller.
+- Generamos la nueva ruta GET.
+```
+
+---
+
+## Cambios en container
+
+Modificamos `container`:
+
+```txt
+- Añadimos el import del nuevo caso de uso.
+- Añadimos su instanciación al container.
+```
+
+---
+
+## Tests adicionales de robustez
+
+Antes de cerrar la Fase 10.5, reforzamos este endpoint con nuevos tests.
+
+Los tests son:
+
+```txt
+Test 1 — devuelve pending si todavía no se ha indexado.
+Test 2 — devuelve 401 sin token.
+Test 3 — devuelve 404 si el proyecto es de otro usuario.
+Test 4 — después de indexar, /ask debe responder con sources.
+```
+
+Con estos tests pasando, queda completada la subfase.
+
+---
+
+## Resultado de la Fase 10.5
+
+Queda implementado:
+
+```txt
+✅ GET /projects/:id/indexing-status
+✅ GetProjectIndexingStatusUseCase
+✅ Validación de ownership
+✅ Estado pending si todavía no hay job
+✅ Estado completed con progress 100
+✅ 401 sin token
+✅ 404 si el proyecto es de otro usuario
+✅ /ask responde con sources después de indexar
+✅ Tests verdes
+```
+
+---
+
+# FASE 10.6 — Rate limit interno entre embeddings
+
+## Problema
+
+Aunque ya hemos sacado los embeddings fuera del upload, ahora `POST /projects/:id/index` todavía puede hacer esto:
+
+```txt
+embedding chunk 1
+embedding chunk 2
+embedding chunk 3
+embedding chunk 4
+...
+embedding chunk 200
+```
+
+Todo seguido.
+
+Eso puede volver a provocar el error de Gemini:
+
+```txt
+429 Too Many Requests
+RESOURCE_EXHAUSTED
+```
+
+Por eso añadimos un rate limit interno entre embeddings.
+
+---
+
+## Objetivo
+
+Queremos que DevMind espere un poco entre chunk y chunk.
+
+Antes:
+
+```txt
+chunk 1 → Gemini
+chunk 2 → Gemini
+chunk 3 → Gemini
+chunk 4 → Gemini
+```
+
+Ahora:
+
+```txt
+chunk 1 → Gemini
+esperar un poco
+chunk 2 → Gemini
+esperar un poco
+chunk 3 → Gemini
+esperar un poco
+chunk 4 → Gemini
+```
+
+En tests no queremos esperar de verdad, así que crearemos un fake.
+
+---
+
+## Test con FakeDelay
+
+Añadimos en el test de `IndexProjectEmbeddingsUseCase` un nuevo fake:
+
+```txt
+FakeDelay
+```
+
+Después hacemos las modificaciones necesarias para el caso de uso.
+
+El test falla porque `IndexProjectEmbeddingsUseCase` todavía no usa delay o porque su constructor todavía no acepta los nuevos argumentos.
+
+---
+
+## Implementación
+
+Para que el test pase, hacemos lo siguiente:
+
+```txt
+1. Creamos un nuevo puerto llamado Delay.
+2. Creamos la implementación real del puerto: TimeoutDelay.
+3. Modificamos IndexProjectEmbeddingsUseCase.
+4. Actualizamos el container.
+```
+
+---
+
+## Nuevo puerto Delay
+
+Creamos el puerto:
+
+```ts
+Delay;
+```
+
+Este puerto representa una espera controlada.
+
+En producción usaremos una implementación real con `setTimeout`.
+
+En tests usaremos un fake para no ralentizar la suite.
+
+---
+
+## TimeoutDelay
+
+Creamos la implementación real:
+
+```txt
+TimeoutDelay
+```
+
+Esta implementación usa `setTimeout`.
+
+---
+
+## Cambio en IndexProjectEmbeddingsUseCase
+
+Antes el bucle era conceptualmente así:
+
+```txt
+chunk 1 → embedding
+chunk 2 → embedding
+chunk 3 → embedding
+```
+
+Ahora queda así:
+
+```txt
+chunk 1 → embedding
+actualizar progreso
+esperar
+
+chunk 2 → embedding
+actualizar progreso
+esperar
+
+chunk 3 → embedding
+actualizar progreso
+terminar
+```
+
+Si queda otro chunk después del actual, espera.
+
+Si el chunk actual era el último, no espera.
+
+---
+
+## Cambio en container
+
+Actualizamos `container`:
+
+```txt
+- Añadimos el import de TimeoutDelay.
+- Inicializamos TimeoutDelay.
+- Pasamos Delay e intervalo al IndexProjectEmbeddingsUseCase.
+```
+
+Con todo esto, los tests pasan.
+
+---
+
+## Resultado de la Fase 10.6
+
+Queda implementado:
+
+```txt
+✅ Puerto Delay
+✅ TimeoutDelay real con setTimeout
+✅ FakeDelay para tests
+✅ IndexProjectEmbeddingsUseCase espera entre chunks
+✅ No espera después del último chunk
+✅ El delay está conectado en container
+✅ Tests unitarios verdes
+✅ Tests globales verdes
+```
+
+---
+
+# FASE 10.7 — Delay configurable desde .env
+
+## Objetivo
+
+Ahora mismo el delay está hardcodeado en el código.
+
+Queremos cambiarlo por una variable de entorno:
+
+```env
+INDEXING_DELAY_BETWEEN_CHUNKS_MS=1000
+```
+
+Así podremos cambiarlo sin tocar código.
+
+Por ejemplo:
+
+```env
+INDEXING_DELAY_BETWEEN_CHUNKS_MS=500
+```
+
+---
+
+## Flujo deseado
+
+La idea final será esta:
+
+```txt
+.env
+↓
+env.ts
+↓
+container.ts
+↓
+IndexProjectEmbeddingsUseCase
+```
+
+Antes teníamos algo como:
+
+```ts
+const indexProjectEmbeddingsUseCase = new IndexProjectEmbeddingsUseCase(
+  projectRepository,
+  codeChunkRepository,
+  projectIndexingJobRepository,
+  generateEmbeddingForCodeChunkUseCase,
+  idGenerator,
+  delay,
+  1000,
+);
+```
+
+Queremos pasar a algo así:
+
+```ts
+const indexProjectEmbeddingsUseCase = new IndexProjectEmbeddingsUseCase(
+  projectRepository,
+  codeChunkRepository,
+  projectIndexingJobRepository,
+  generateEmbeddingForCodeChunkUseCase,
+  idGenerator,
+  delay,
+  env.indexing.delayBetweenChunksMs,
+);
+```
+
+---
+
+## Cambio en env.ts
+
+Añadimos en:
+
+```txt
+src/infrastructure/config/env.ts
+```
+
+la nueva configuración:
+
+```ts
+indexing: {
+  delayBetweenChunksMs:
+    Number(process.env.INDEXING_DELAY_BETWEEN_CHUNKS_MS) || 1000,
+},
+```
+
+---
+
+## Cambio en container
+
+Después modificamos `container`.
+
+Ya no debe tener el delay hardcodeado.
+
+Debe cogerlo desde `env`:
+
+```txt
+env.indexing.delayBetweenChunksMs
+```
+
+También es importante que la variable exista en `.env`.
+
+Con esto terminamos esta subfase.
+
+---
+
+## Resultado de la Fase 10.7
+
+Queda implementado:
+
+```txt
+✅ Delay entre chunks configurable desde .env
+✅ Variable INDEXING_DELAY_BETWEEN_CHUNKS_MS
+✅ env.ts actualizado
+✅ container actualizado
+✅ Se elimina el valor hardcodeado de 1000 ms
+```
+
+---
+
+# FASE 10.8 — Indexación automática en segundo plano
+
+## Estado anterior
+
+Hasta ahora el flujo era manual:
+
+```txt
+POST /projects/:id/upload
+↓
+crea ProjectFiles + CodeChunks
+
+POST /projects/:id/index
+↓
+genera embeddings
+```
+
+Queremos pasar a esto:
+
+```txt
+POST /projects/:id/upload
+↓
+crea ProjectFiles + CodeChunks
+↓
+responde rápido
+↓
+lanza la indexación en segundo plano
+```
+
+Es decir, el usuario sube el ZIP y ya no tiene que pulsar manualmente `/index`.
+
+---
+
+## Regla importante
+
+No vamos a meter otra vez los embeddings dentro del upload.
+
+No queremos esto:
+
+```txt
+upload espera a que terminen todos los embeddings
+```
+
+Queremos esto:
+
+```txt
+upload responde
+y por detrás empieza la indexación
+```
+
+---
+
+## Nueva pieza: ProjectIndexingScheduler
+
+Para hacerlo bien, creamos una pieza nueva:
+
+```txt
+ProjectIndexingScheduler
+```
+
+Será un puerto pequeño con una operación como:
+
+```ts
+schedule(input: { projectId: string; ownerId: string }): void;
+```
+
+Este puerto significa:
+
+```txt
+Programa la indexación de este proyecto en segundo plano.
+```
+
+---
+
+## Implementación real del scheduler
+
+La implementación real hará algo como:
+
+```ts
+void indexProjectEmbeddingsUseCase.execute({
+  projectId,
+  ownerId,
+});
+```
+
+La clave está en usar `void`, para lanzar la indexación sin esperar a que termine.
+
+Así, `POST /upload` puede responder rápido.
+
+Además, añadimos un `.catch(...)` para evitar que un error del proceso de fondo quede como una promesa rechazada sin controlar.
+
+---
+
+## Test en UploadProjectZipUseCase
+
+Como siempre, empezamos por el test.
+
+Modificamos:
+
+```txt
+uploadProjectZipUseCase.test.ts
+```
+
+Cambios realizados:
+
+```txt
+- Añadimos FakeProjectIndexingScheduler.
+- Modificamos el helper createUploadProjectZipUseCase para aceptar esa nueva dependencia.
+- Añadimos un test nuevo que comprueba que, después de subir un ZIP válido, se programa la indexación automática del proyecto.
+```
+
+El test falla porque `UploadProjectZipUseCase` todavía no acepta `ProjectIndexingScheduler`.
+
+---
+
+## Implementación en UploadProjectZipUseCase
+
+Para que el test pase:
+
+```txt
+1. Creamos el puerto ProjectIndexingScheduler.
+2. Modificamos UploadProjectZipUseCase.
+3. Creamos el scheduler real.
+4. Modificamos el container.
+```
+
+---
+
+## Cuándo programar indexación
+
+No programamos indexación si todo está unchanged.
+
+Ejemplo:
+
+```txt
+created: 0
+updated: 0
+deleted: 0
+unchanged: 10
+```
+
+En ese caso, el ZIP no ha cambiado nada.
+
+Pero sí programamos indexación si hay algo relevante:
+
+```txt
+created > 0
+updated > 0
+deleted > 0
+```
+
+Eso significa que el contenido indexable del proyecto ha cambiado.
+
+---
+
+## Scheduler real
+
+Creamos el adaptador real:
+
+```txt
+AsyncProjectIndexingScheduler
+```
+
+Este adaptador lanza la indexación, pero no espera a que termine.
+
+Así:
+
+```txt
+POST /upload responde rápido.
+```
+
+Además, el scheduler captura errores con `.catch(...)`.
+
+---
+
+## Cambios en container
+
+Modificamos el `container` para conectar:
+
+```txt
+ProjectIndexingScheduler
+AsyncProjectIndexingScheduler
+IndexProjectEmbeddingsUseCase
+UploadProjectZipUseCase
+```
+
+---
+
+## Resultado de la Fase 10.8
+
+Con esto, DevMind ya puede lanzar la indexación automáticamente en segundo plano después de subir un ZIP.
+
+El flujo queda:
+
+```txt
+POST /projects/:id/upload
+↓
+guarda ProjectFiles
+↓
+genera CodeChunks
+↓
+responde rápido
+↓
+lanza indexación automática en segundo plano
+```
+
+Después:
+
+```txt
+AsyncProjectIndexingScheduler
+↓
+IndexProjectEmbeddingsUseCase
+↓
+genera embeddings poco a poco
+↓
+actualiza project_indexing_jobs
+↓
+GET /projects/:id/indexing-status muestra progreso
+```
+
+Queda implementado:
+
+```txt
+✅ Puerto ProjectIndexingScheduler
+✅ FakeProjectIndexingScheduler en tests
+✅ AsyncProjectIndexingScheduler real
+✅ UploadProjectZipUseCase programa indexación automática
+✅ No se programa indexación si todo está unchanged
+✅ Se programa indexación si hay created, updated o deleted
+✅ Scheduler con .catch para controlar errores de fondo
+✅ container actualizado
+```
+
+---
+
+# Conclusión de la Fase 10
+
+La Fase 10 tenía como objetivo principal solucionar este problema:
+
+```txt
+Subir ZIP grande
+↓
+generar muchos chunks
+↓
+llamar muchas veces a Gemini de golpe
+↓
+429 / errores / subida lenta / bloqueo
+```
+
+Ahora el flujo queda así:
+
+```txt
+POST /projects/:id/upload
+↓
+guarda ProjectFiles
+↓
+genera CodeChunks
+↓
+responde rápido
+↓
+lanza indexación automática en segundo plano
+↓
+GET /projects/:id/indexing-status muestra progreso
+↓
+cuando termina, POST /projects/:id/ask responde usando RAG
+```
+
+Además, se ha probado con el ZIP real de DevMind:
+
+```txt
+149 archivos creados
+508 chunks totales
+508 chunks procesados
+0 fallidos
+status completed
+progress 100%
+```
+
+Esta es una prueba fuerte de que el flujo funciona con un proyecto grande real.
+
+---
+
+## Qué hemos cerrado en Fase 10
+
+```txt
+✅ 10.1 Separar chunks de embeddings
+✅ 10.2 Tabla project_indexing_jobs
+✅ 10.3 IndexProjectEmbeddingsUseCase
+✅ 10.4 POST /projects/:id/index manual
+✅ 10.5 GET /projects/:id/indexing-status
+✅ 10.6 Delay/rate limit entre embeddings
+✅ 10.7 Delay configurable desde .env
+✅ 10.8 Indexación automática en segundo plano
+✅ Scheduler real AsyncProjectIndexingScheduler
+✅ Scheduler Noop/Fake para tests
+✅ Reindexación idempotente
+✅ Filtro de docs y .md para centrar el RAG en código
+✅ Prueba real con ZIP grande completada
+✅ /ask responde con fuentes de código real
+```
+
+---
+
+## Estado final tras la Fase 10
+
+Después de esta fase, DevMind ya no genera embeddings dentro de la petición de subida del ZIP.
+
+Ahora separa correctamente:
+
+```txt
+Subida de proyecto
+↓
+guardado de archivos
+↓
+generación de chunks
+↓
+respuesta rápida al frontend
+```
+
+de:
+
+```txt
+indexación de embeddings
+↓
+procesamiento progresivo
+↓
+control de rate limit
+↓
+estado consultable
+↓
+RAG disponible cuando termina
+```
+
+Esto hace que DevMind sea mucho más robusto, más realista y más preparado para proyectos grandes.

@@ -76,6 +76,27 @@ export class PostgresCodeChunkRepository implements CodeChunkRepository {
 
     return result.rows.map((row) => this.toDomain(row));
   }
+  async findByProjectId(projectId: string): Promise<CodeChunk[]> {
+    const result = await this.pool.query(
+      `
+    SELECT
+      id,
+      project_id,
+      project_file_id,
+      content,
+      start_line,
+      end_line,
+      chunk_index,
+      created_at
+    FROM code_chunks
+    WHERE project_id = $1
+    ORDER BY project_file_id ASC, chunk_index ASC
+    `,
+      [projectId],
+    );
+
+    return result.rows.map((row) => this.toDomain(row));
+  }
 
   async deleteByProjectFileId(projectFileId: string): Promise<void> {
     await this.pool.query(

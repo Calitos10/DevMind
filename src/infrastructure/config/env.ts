@@ -20,4 +20,8 @@ export const env = {
     max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 10,
     windowMinutes: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES) || 15,
   },
+  indexing: {
+    delayBetweenChunksMs:
+      Number(process.env.INDEXING_DELAY_BETWEEN_CHUNKS_MS) || 1000,
+  },
 };

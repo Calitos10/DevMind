@@ -60,6 +60,16 @@ import { GenkitEmbeddingGenerator } from "../infrastructure/genkit/genkitEmbeddi
 import { GenerateEmbeddingForCodeChunkUseCase } from "../application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
 
 
+//IMPORT DEL CASO DE USO QUE USA LA GENERACION DE EMBEDDINGS 
+import { PostgresProjectIndexingJobRepository } from "../infrastructure/repositoryAdapter/postgres/postgresProjectIndexingJobRepository";
+import { IndexProjectEmbeddingsUseCase } from "../application/indexing/indexProjectEmbeddingsUseCase";
+import { GetProjectIndexingStatusUseCase } from "../application/indexing/getProjectIndexingStatusUseCase";
+import { TimeoutDelay } from "../infrastructure/timeDelayAdapter/timeoutDelay";
+import { env } from "../infrastructure/config/env";
+import { AsyncProjectIndexingScheduler } from "../infrastructure/indexingAdapter/asyncProjectIndexingScheduler";
+import { NoopProjectIndexingScheduler } from "../infrastructure/indexingAdapter/noopProjectIndexingScheduler";
+
+
 //IMPORTS PARA LA PARTE DE LAS PREGUNTAS
 import type { AnswerGenerator } from "../application/ports/answerGenerator";
 import { AskProjectQuestionUseCase } from "../application/projectQuestions/askProjectQuestionUseCase";
@@ -78,6 +88,7 @@ const userRepository = new PostgresUserRepository(postgresPool);
 const projectRepository = new PostgresProjectRepository(postgresPool);
 const projectFileRepository = new PostgresProjectFileRepository(postgresPool);
 const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
+const projectIndexingJobRepository = new PostgresProjectIndexingJobRepository(postgresPool);
 
 
 
@@ -88,6 +99,7 @@ const idGenerator = new CryptoIdGenerator();
 const fileHashGenerator = new CryptoFileHashGenerator();
 const zipExtractor = new AdmZipExtractor();
 const codeChunker = new LineCodeChunker();
+const delay = new TimeoutDelay();
 
 
 //Monto las dependencias de los embedding
@@ -116,8 +128,25 @@ const generateCodeChunksForProjectFileUseCase =
     codeChunkRepository,
     codeChunker,
     idGenerator,
-    generateEmbeddingForCodeChunkUseCase,
+    
   );
+
+  const indexProjectEmbeddingsUseCase = new IndexProjectEmbeddingsUseCase(
+  projectRepository,
+  codeChunkRepository,
+  projectIndexingJobRepository,
+  generateEmbeddingForCodeChunkUseCase,
+  idGenerator,
+  delay,
+  env.indexing.delayBetweenChunksMs,
+);
+
+const isTestEnvironment =
+  process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+
+const projectIndexingScheduler = isTestEnvironment
+  ? new NoopProjectIndexingScheduler()
+  : new AsyncProjectIndexingScheduler(indexProjectEmbeddingsUseCase);
 
 export const container = {
   userRepository,
@@ -170,11 +199,18 @@ export const container = {
   ),
 
   uploadProjectZipUseCase: new UploadProjectZipUseCase(
+  projectRepository,
+  projectFileRepository,
+  zipExtractor,
+  idGenerator,
+  generateCodeChunksForProjectFileUseCase,
+  projectIndexingScheduler,
+),
+  indexProjectEmbeddingsUseCase,
+
+getProjectIndexingStatusUseCase : new GetProjectIndexingStatusUseCase(
     projectRepository,
-    projectFileRepository,
-    zipExtractor,
-    idGenerator,
-    generateCodeChunksForProjectFileUseCase,
+    projectIndexingJobRepository,
   ),
 
   askProjectQuestionUseCase: new AskProjectQuestionUseCase(

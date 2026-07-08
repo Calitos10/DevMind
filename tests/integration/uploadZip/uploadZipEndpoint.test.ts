@@ -5,26 +5,6 @@ import { describe, expect, it } from "vitest";
 import { app } from "../../../src/app";
 import { postgresPool } from "../../../src/infrastructure/database/postgresPool";
 import { PostgresCodeChunkRepository } from "../../../src/infrastructure/repositoryAdapter/postgres/postgresCodeChunkRepository";
-import { PostgresCodeChunkEmbeddingRepository } from "../../../src/infrastructure/repositoryAdapter/postgres/postgresCodeChunkEmbeddingRepository";
-
-async function expectEmbeddingForCodeChunk(input: {
-  repository: PostgresCodeChunkEmbeddingRepository;
-  codeChunkId: string;
-  projectId: string;
-}) {
-  const embedding = await input.repository.findByCodeChunkId(input.codeChunkId);
-
-  expect(embedding).not.toBeNull();
-
-  expect(embedding).toMatchObject({
-    projectId: input.projectId,
-    codeChunkId: input.codeChunkId,
-  });
-
-  expect(embedding?.embedding).toHaveLength(768);
-
-  return embedding;
-}
 
 describe("POST /projects/:projectId/upload", () => {
   it("uploads a project zip and creates project files", async () => {
@@ -117,10 +97,8 @@ describe("POST /projects/:projectId/upload", () => {
     });
   });
 
-  it("creates code chunks and embeddings when uploading a project zip", async () => {
+  it("creates code chunks when uploading a project zip", async () => {
     const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
-    const codeChunkEmbeddingRepository =
-      new PostgresCodeChunkEmbeddingRepository(postgresPool);
 
     await request(app).post("/auth/register").send({
       name: "Carlos",
@@ -215,18 +193,6 @@ describe("POST /projects/:projectId/upload", () => {
       startLine: 1,
       endLine: 1,
       index: 0,
-    });
-
-    await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: indexFileChunks[0].id,
-      projectId,
-    });
-
-    await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: packageJsonFileChunks[0].id,
-      projectId,
     });
   });
 
@@ -487,10 +453,8 @@ describe("POST /projects/:projectId/upload", () => {
     });
   });
 
-  it("synchronizes project files, code chunks and embeddings when uploading an updated zip", async () => {
+  it("synchronizes project files and code chunks when uploading an updated zip", async () => {
     const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
-    const codeChunkEmbeddingRepository =
-      new PostgresCodeChunkEmbeddingRepository(postgresPool);
 
     await request(app).post("/auth/register").send({
       name: "Carlos",
@@ -586,24 +550,6 @@ describe("POST /projects/:projectId/upload", () => {
     expect(firstIndexFileChunks).toHaveLength(1);
     expect(firstAppFileChunks).toHaveLength(1);
     expect(firstOldFileChunks).toHaveLength(1);
-
-    const firstIndexFileEmbedding = await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: firstIndexFileChunks[0].id,
-      projectId,
-    });
-
-    const firstAppFileEmbedding = await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: firstAppFileChunks[0].id,
-      projectId,
-    });
-
-    const firstOldFileEmbedding = await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: firstOldFileChunks[0].id,
-      projectId,
-    });
 
     const secondZip = new AdmZip();
 
@@ -775,43 +721,5 @@ describe("POST /projects/:projectId/upload", () => {
     });
 
     expect(finalOldFileChunks).toEqual([]);
-
-    const finalIndexFileEmbedding = await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: finalIndexFileChunks[0].id,
-      projectId,
-    });
-
-    expect(finalIndexFileEmbedding?.id).toBe(firstIndexFileEmbedding?.id);
-
-    const finalAppFileEmbedding = await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: finalAppFileChunks[0].id,
-      projectId,
-    });
-
-    expect(finalAppFileEmbedding?.id).not.toBe(firstAppFileEmbedding?.id);
-
-    await expectEmbeddingForCodeChunk({
-      repository: codeChunkEmbeddingRepository,
-      codeChunkId: finalNewFileChunks[0].id,
-      projectId,
-    });
-
-    const deletedOldFileEmbedding =
-      await codeChunkEmbeddingRepository.findByCodeChunkId(
-        firstOldFileChunks[0].id,
-      );
-
-    expect(deletedOldFileEmbedding).toBeNull();
-
-    const oldAppFileEmbedding =
-      await codeChunkEmbeddingRepository.findByCodeChunkId(
-        firstAppFileChunks[0].id,
-      );
-
-    expect(oldAppFileEmbedding).toBeNull();
-
-    expect(firstOldFileEmbedding).not.toBeNull();
   });
 });

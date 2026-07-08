@@ -73,32 +73,16 @@ class FakeIdGenerator {
   }
 }
 
-class FakeGenerateEmbeddingForCodeChunkUseCase {
-  public generatedCodeChunkIds: string[] = [];
-
-  async execute(input: { codeChunk: SavedCodeChunk }) {
-    this.generatedCodeChunkIds.push(input.codeChunk.id);
-
-    return {
-      codeChunkId: input.codeChunk.id,
-      embeddingCreated: true,
-    };
-  }
-}
-
 describe("GenerateCodeChunksForProjectFileUseCase", () => {
   it("generates and saves code chunks for a project file", async () => {
     const codeChunkRepository = new FakeCodeChunkRepository();
     const codeChunker = new FakeCodeChunker();
     const idGenerator = new FakeIdGenerator();
-    const generateEmbeddingForCodeChunkUseCase =
-      new FakeGenerateEmbeddingForCodeChunkUseCase();
 
     const useCase = new GenerateCodeChunksForProjectFileUseCase(
       codeChunkRepository,
       codeChunker,
       idGenerator,
-      generateEmbeddingForCodeChunkUseCase,
     );
 
     const projectFile = {
@@ -154,14 +138,11 @@ describe("GenerateCodeChunksForProjectFileUseCase", () => {
     const codeChunkRepository = new FakeCodeChunkRepository();
     const codeChunker = new FakeEmptyCodeChunker();
     const idGenerator = new FakeIdGenerator();
-    const generateEmbeddingForCodeChunkUseCase =
-      new FakeGenerateEmbeddingForCodeChunkUseCase();
 
     const useCase = new GenerateCodeChunksForProjectFileUseCase(
       codeChunkRepository,
       codeChunker,
       idGenerator,
-      generateEmbeddingForCodeChunkUseCase,
     );
 
     const projectFile = {
@@ -190,39 +171,5 @@ describe("GenerateCodeChunksForProjectFileUseCase", () => {
       chunksCreated: 0,
       chunks: [],
     });
-  });
-  it("generates embeddings for saved code chunks", async () => {
-    const codeChunkRepository = new FakeCodeChunkRepository();
-    const codeChunker = new FakeCodeChunker();
-    const idGenerator = new FakeIdGenerator();
-    const generateEmbeddingForCodeChunkUseCase =
-      new FakeGenerateEmbeddingForCodeChunkUseCase();
-
-    const useCase = new GenerateCodeChunksForProjectFileUseCase(
-      codeChunkRepository,
-      codeChunker,
-      idGenerator,
-      generateEmbeddingForCodeChunkUseCase,
-    );
-
-    const projectFile = {
-      id: "project-file-1",
-      projectId: "project-1",
-      path: "src/app.ts",
-      language: "typescript",
-      content: ["line 1", "line 2", "line 3", "line 4"].join("\n"),
-      size: 27,
-      hash: "file-hash",
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    };
-
-    await useCase.execute({
-      projectFile,
-    });
-
-    expect(generateEmbeddingForCodeChunkUseCase.generatedCodeChunkIds).toEqual([
-      "chunk-1",
-      "chunk-2",
-    ]);
   });
 });

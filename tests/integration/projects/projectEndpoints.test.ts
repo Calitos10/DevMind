@@ -418,6 +418,277 @@ describe("Projects routes", () => {
 
     expect(ownerGetResponse.status).toBe(200);
   });
+  it("POST /projects/:id/index should index uploaded project chunks", async () => {
+    const email = `index-project-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Index Project User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "Project to index",
+        description: "Testing project indexing endpoint",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const zip = new AdmZip();
+
+    zip.addFile(
+      "src/auth/registerUserUseCase.ts",
+      Buffer.from("export class RegisterUserUseCase {}", "utf8"),
+    );
+
+    const uploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", zip.toBuffer(), {
+        filename: "project.zip",
+        contentType: "application/zip",
+      });
+
+    expect(uploadResponse.status).toBe(201);
+
+    const indexResponse = await request(app)
+      .post(`/projects/${projectId}/index`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(indexResponse.status).toBe(200);
+
+    expect(indexResponse.body).toEqual({
+      projectId,
+      status: "completed",
+      totalChunks: 1,
+      processedChunks: 1,
+      failedChunks: 0,
+    });
+  });
+  it("POST /projects/:id/index should return 401 without token", async () => {
+    const response = await request(app).post("/projects/project-1/index");
+
+    expect(response.status).toBe(401);
+  });
+  it("POST /projects/:id/index should return 404 when indexing another user's project", async () => {
+    const ownerEmail = `index-owner-${Date.now()}@test.com`;
+    const intruderEmail = `index-intruder-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Index Owner",
+      email: ownerEmail,
+      password,
+    });
+
+    const ownerLoginResponse = await request(app).post("/auth/login").send({
+      email: ownerEmail,
+      password,
+    });
+
+    const ownerAccessToken = ownerLoginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .send({
+        name: "Owner project to index",
+        description: "This project belongs to the owner",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    await request(app).post("/auth/register").send({
+      name: "Index Intruder",
+      email: intruderEmail,
+      password,
+    });
+
+    const intruderLoginResponse = await request(app).post("/auth/login").send({
+      email: intruderEmail,
+      password,
+    });
+
+    const intruderAccessToken = intruderLoginResponse.body.accessToken;
+
+    const response = await request(app)
+      .post(`/projects/${projectId}/index`)
+      .set("Authorization", `Bearer ${intruderAccessToken}`);
+
+    expect(response.status).toBe(404);
+  });
+  it("GET /projects/:id/indexing-status should return the project indexing status", async () => {
+    const email = `indexing-status-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Indexing Status User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "Project with indexing status",
+        description: "Testing indexing status endpoint",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const zip = new AdmZip();
+
+    zip.addFile(
+      "src/auth/registerUserUseCase.ts",
+      Buffer.from("export class RegisterUserUseCase {}", "utf8"),
+    );
+
+    const uploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", zip.toBuffer(), {
+        filename: "project.zip",
+        contentType: "application/zip",
+      });
+
+    expect(uploadResponse.status).toBe(201);
+
+    const indexResponse = await request(app)
+      .post(`/projects/${projectId}/index`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(indexResponse.status).toBe(200);
+
+    const statusResponse = await request(app)
+      .get(`/projects/${projectId}/indexing-status`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(statusResponse.status).toBe(200);
+
+    expect(statusResponse.body).toEqual({
+      projectId,
+      status: "completed",
+      totalChunks: 1,
+      processedChunks: 1,
+      failedChunks: 0,
+      progress: 100,
+    });
+  });
+  it("GET /projects/:id/indexing-status should return pending when the project has not been indexed yet", async () => {
+    const email = `indexing-status-pending-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Indexing Status Pending User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "Project not indexed yet",
+        description: "Testing pending indexing status",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const statusResponse = await request(app)
+      .get(`/projects/${projectId}/indexing-status`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(statusResponse.status).toBe(200);
+
+    expect(statusResponse.body).toEqual({
+      projectId,
+      status: "pending",
+      totalChunks: 0,
+      processedChunks: 0,
+      failedChunks: 0,
+      progress: 0,
+    });
+  });
+  it("GET /projects/:id/indexing-status should return 401 without token", async () => {
+    const response = await request(app).get(
+      "/projects/project-1/indexing-status",
+    );
+
+    expect(response.status).toBe(401);
+  });
+  it("GET /projects/:id/indexing-status should return 404 for another user's project", async () => {
+    const ownerEmail = `indexing-status-owner-${Date.now()}@test.com`;
+    const intruderEmail = `indexing-status-intruder-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Indexing Status Owner",
+      email: ownerEmail,
+      password,
+    });
+
+    const ownerLoginResponse = await request(app).post("/auth/login").send({
+      email: ownerEmail,
+      password,
+    });
+
+    const ownerAccessToken = ownerLoginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${ownerAccessToken}`)
+      .send({
+        name: "Owner project with indexing status",
+        description: "This project belongs to the owner",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    await request(app).post("/auth/register").send({
+      name: "Indexing Status Intruder",
+      email: intruderEmail,
+      password,
+    });
+
+    const intruderLoginResponse = await request(app).post("/auth/login").send({
+      email: intruderEmail,
+      password,
+    });
+
+    const intruderAccessToken = intruderLoginResponse.body.accessToken;
+
+    const response = await request(app)
+      .get(`/projects/${projectId}/indexing-status`)
+      .set("Authorization", `Bearer ${intruderAccessToken}`);
+
+    expect(response.status).toBe(404);
+  });
   it("POST /projects/:id/ask should answer a question for the authenticated user's project", async () => {
     const email = `ask-project-user-${Date.now()}@test.com`;
     const password = "password123";
@@ -458,6 +729,84 @@ describe("Projects routes", () => {
       answer:
         "No tengo suficiente información del proyecto para responder a esa pregunta.",
       sources: [],
+    });
+  });
+  it("POST /projects/:id/ask should answer using uploaded project chunks after indexing", async () => {
+    const email = `ask-after-index-${Date.now()}@test.com`;
+    const password = "password123";
+
+    await request(app).post("/auth/register").send({
+      name: "Ask After Index User",
+      email,
+      password,
+    });
+
+    const loginResponse = await request(app).post("/auth/login").send({
+      email,
+      password,
+    });
+
+    const accessToken = loginResponse.body.accessToken;
+
+    const createProjectResponse = await request(app)
+      .post("/projects")
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        name: "DevMind API",
+        description: "Backend con IA para consultar proyectos software",
+      });
+
+    const projectId = createProjectResponse.body.id;
+
+    const zip = new AdmZip();
+
+    zip.addFile(
+      "src/auth/registerUserUseCase.ts",
+      Buffer.from("export class RegisterUserUseCase {}", "utf8"),
+    );
+
+    const uploadResponse = await request(app)
+      .post(`/projects/${projectId}/upload`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .attach("file", zip.toBuffer(), {
+        filename: "project.zip",
+        contentType: "application/zip",
+      });
+
+    expect(uploadResponse.status).toBe(201);
+
+    const indexResponse = await request(app)
+      .post(`/projects/${projectId}/index`)
+      .set("Authorization", `Bearer ${accessToken}`);
+
+    expect(indexResponse.status).toBe(200);
+
+    expect(indexResponse.body).toEqual({
+      projectId,
+      status: "completed",
+      totalChunks: 1,
+      processedChunks: 1,
+      failedChunks: 0,
+    });
+
+    const askResponse = await request(app)
+      .post(`/projects/${projectId}/ask`)
+      .set("Authorization", `Bearer ${accessToken}`)
+      .send({
+        question: "¿Dónde se registra un usuario?",
+      });
+
+    expect(askResponse.status).toBe(200);
+
+    expect(askResponse.body).toEqual({
+      answer: "Respuesta generada por IA pendiente de implementar.",
+      sources: [
+        {
+          path: "src/auth/registerUserUseCase.ts",
+          startLine: 1,
+          endLine: 1,
+        },
+      ],
     });
   });
   it("POST /projects/:id/ask should return 401 when no token is provided", async () => {
@@ -556,7 +905,7 @@ describe("Projects routes", () => {
 
     expect(response.status).toBe(400);
   });
-  it("POST /projects/:id/ask should answer using uploaded project chunks", async () => {
+  it("POST /projects/:id/ask should return fallback when the project is not indexed yet", async () => {
     const email = `ask-with-context-${Date.now()}@test.com`;
     const password = "password123";
 
@@ -610,14 +959,9 @@ describe("Projects routes", () => {
     expect(response.status).toBe(200);
 
     expect(response.body).toEqual({
-      answer: "Respuesta generada por IA pendiente de implementar.",
-      sources: [
-        {
-          path: "src/auth/registerUserUseCase.ts",
-          startLine: 1,
-          endLine: 1,
-        },
-      ],
+      answer:
+        "No tengo suficiente información del proyecto para responder a esa pregunta.",
+      sources: [],
     });
   });
 });

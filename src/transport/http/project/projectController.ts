@@ -7,6 +7,8 @@ import { ListUserProjectsUseCase } from "../../../application/projects/listUserP
 import { GetProjectByIdUseCase } from "../../../application/projects/getProjectByIdUseCase";
 import { DeleteProjectUseCase } from "../../../application/projects/deleteProjectUseCase";
 import { UploadProjectZipUseCase } from "../../../application/uploadZip/uploadProjectZipUseCase";
+import { IndexProjectEmbeddingsUseCase } from "../../../application/indexing/indexProjectEmbeddingsUseCase";
+import { GetProjectIndexingStatusUseCase } from "../../../application/indexing/getProjectIndexingStatusUseCase";
 import { AskProjectQuestionUseCase } from "../../../application/projectQuestions/askProjectQuestionUseCase";
 
 export class ProjectController {
@@ -16,6 +18,8 @@ export class ProjectController {
     private readonly getProjectByIdUseCase: GetProjectByIdUseCase,
     private readonly deleteProjectUseCase: DeleteProjectUseCase,
     private readonly uploadProjectZipUseCase: UploadProjectZipUseCase,
+    private readonly indexProjectEmbeddingsUseCase: IndexProjectEmbeddingsUseCase,
+    private readonly getProjectIndexingStatusUseCase: GetProjectIndexingStatusUseCase,
     private readonly askProjectQuestionUseCase: AskProjectQuestionUseCase,
   ) {}
 
@@ -77,6 +81,26 @@ export class ProjectController {
     });
 
     return res.status(201).json(result);
+  }
+  async index(req: Request, res: Response) {
+    const authenticatedReq = req as AuthenticatedRequest;
+
+    const result = await this.indexProjectEmbeddingsUseCase.execute({
+      projectId: authenticatedReq.params.id as string,
+      ownerId: authenticatedReq.user.userId,
+    });
+
+    return res.status(200).json(result);
+  }
+  async getIndexingStatus(req: Request, res: Response) {
+    const authenticatedReq = req as AuthenticatedRequest;
+
+    const result = await this.getProjectIndexingStatusUseCase.execute({
+      projectId: authenticatedReq.params.id as string,
+      ownerId: authenticatedReq.user.userId,
+    });
+
+    return res.status(200).json(result);
   }
   async ask(req: Request, res: Response) {
     const authenticatedReq = req as AuthenticatedRequest;

@@ -28,16 +28,11 @@ type GenerateCodeChunksForProjectFileOutput = {
   chunks: CodeChunk[];
 };
 
-type GenerateEmbeddingForCodeChunkUseCase = {
-  execute(input: { codeChunk: CodeChunk }): Promise<unknown>;
-};
-
 export class GenerateCodeChunksForProjectFileUseCase {
   constructor(
     private readonly codeChunkRepository: CodeChunkRepository,
     private readonly codeChunker: CodeChunker,
     private readonly idGenerator: IdGenerator,
-    private readonly generateEmbeddingForCodeChunkUseCase: GenerateEmbeddingForCodeChunkUseCase,
   ) {}
 
   async execute(
@@ -65,12 +60,6 @@ export class GenerateCodeChunksForProjectFileUseCase {
     }));
 
     const savedCodeChunks = await this.codeChunkRepository.saveMany(codeChunks);
-
-    for (const savedCodeChunk of savedCodeChunks) {
-      await this.generateEmbeddingForCodeChunkUseCase.execute({
-        codeChunk: savedCodeChunk,
-      });
-    }
 
     return {
       projectFileId: input.projectFile.id,

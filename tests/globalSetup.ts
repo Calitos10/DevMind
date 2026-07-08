@@ -5,7 +5,7 @@ import { Pool } from "pg";
 
 const truncateTables = async (pool: Pool) => {
   await pool.query(`
-    TRUNCATE TABLE code_chunks, project_files, projects, users RESTART IDENTITY CASCADE;
+    TRUNCATE TABLE project_indexing_jobs, code_chunk_embeddings, code_chunks, project_files, projects, users RESTART IDENTITY CASCADE;
   `);
 };
 

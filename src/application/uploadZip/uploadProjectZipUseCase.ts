@@ -7,6 +7,7 @@ import { IdGenerator } from "../../application/ports/idGeneratorPort";
 import { ZipExtractor } from "../../application/ports/zipExtractor";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { NoValidProjectFilesFoundError } from "../../shared/errors/noValidProjectFilesFoundError";
+import { ProjectIndexingScheduler } from "../../application/ports/projectIndexingScheduler";
 
 type UploadProjectZipUseCaseInput = {
   projectId: string;
@@ -25,6 +26,7 @@ export class UploadProjectZipUseCase {
     private readonly zipExtractor: ZipExtractor,
     private readonly idGenerator: IdGenerator,
     private readonly generateCodeChunksForProjectFileUseCase: GenerateCodeChunksForProjectFileUseCase,
+    private readonly projectIndexingScheduler: ProjectIndexingScheduler,
   ) {}
 
   async execute(input: UploadProjectZipUseCaseInput) {
@@ -132,6 +134,18 @@ export class UploadProjectZipUseCase {
       }
     }
 
+    const hasIndexingRelevantChanges =
+      createdFiles.length > 0 ||
+      updatedFiles.length > 0 ||
+      deletedFiles.length > 0;
+
+    if (hasIndexingRelevantChanges) {
+      this.projectIndexingScheduler.schedule({
+        projectId: input.projectId,
+        ownerId: input.ownerId,
+      });
+    }
+
     return {
       projectId: input.projectId,
       summary: {
@@ -169,6 +183,7 @@ function isIgnoredProjectFilePath(path: string): boolean {
     "build",
     "coverage",
     ".next",
+    "docs",
   ]);
 
   const pathParts = path.replaceAll("\\", "/").split("/");
