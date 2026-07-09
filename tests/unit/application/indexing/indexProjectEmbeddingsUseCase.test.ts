@@ -1,18 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { IndexProjectEmbeddingsUseCase } from "../../../../src/application/indexing/indexProjectEmbeddingsUseCase";
+import type { CodeChunk } from "../../../../src/domain/entities/codeChunk";
+import { FakeCodeChunkRepository } from "../../../fakes/fakeCodeChunkRepository";
+import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
-
-type CodeChunk = {
-  id: string;
-  projectId: string;
-  projectFileId: string;
-  content: string;
-  startLine: number;
-  endLine: number;
-  index: number;
-  createdAt: Date;
-};
 
 type ProjectIndexingJobStatus =
   | "pending"
@@ -31,33 +23,6 @@ type ProjectIndexingJob = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-class FakeCodeChunkRepository {
-  public codeChunks: CodeChunk[] = [];
-  public deletedProjectFileIds: string[] = [];
-
-  async saveMany(codeChunks: CodeChunk[]): Promise<CodeChunk[]> {
-    this.codeChunks.push(...codeChunks);
-
-    return codeChunks;
-  }
-
-  async findByProjectFileId(projectFileId: string): Promise<CodeChunk[]> {
-    return this.codeChunks.filter(
-      (codeChunk) => codeChunk.projectFileId === projectFileId,
-    );
-  }
-
-  async findByProjectId(projectId: string): Promise<CodeChunk[]> {
-    return this.codeChunks.filter(
-      (codeChunk) => codeChunk.projectId === projectId,
-    );
-  }
-
-  async deleteByProjectFileId(projectFileId: string): Promise<void> {
-    this.deletedProjectFileIds.push(projectFileId);
-  }
-}
 
 class FakeProjectIndexingJobRepository {
   public savedJobs: ProjectIndexingJob[] = [];
@@ -114,12 +79,6 @@ class FakeFailingGenerateEmbeddingForCodeChunkUseCase {
   }
 }
 
-class FakeIdGenerator {
-  generate(): string {
-    return "indexing-job-1";
-  }
-}
-
 class FakeDelay {
   public waitedMilliseconds: number[] = [];
 
@@ -135,7 +94,7 @@ describe("IndexProjectEmbeddingsUseCase", () => {
     const projectIndexingJobRepository = new FakeProjectIndexingJobRepository();
     const generateEmbeddingForCodeChunkUseCase =
       new FakeGenerateEmbeddingForCodeChunkUseCase();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeIdGenerator("indexing-job-1");
     const delay = new FakeDelay();
 
     await projectRepository.save({
@@ -244,7 +203,7 @@ describe("IndexProjectEmbeddingsUseCase", () => {
     const projectIndexingJobRepository = new FakeProjectIndexingJobRepository();
     const generateEmbeddingForCodeChunkUseCase =
       new FakeFailingGenerateEmbeddingForCodeChunkUseCase();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeIdGenerator("indexing-job-1");
 
     await projectRepository.save({
       id: "project-1",
@@ -333,7 +292,7 @@ describe("IndexProjectEmbeddingsUseCase", () => {
     const projectIndexingJobRepository = new FakeProjectIndexingJobRepository();
     const generateEmbeddingForCodeChunkUseCase =
       new FakeGenerateEmbeddingForCodeChunkUseCase();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeIdGenerator("indexing-job-1");
 
     await projectRepository.save({
       id: "project-1",

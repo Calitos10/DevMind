@@ -8,6 +8,7 @@ import {
 } from "../../../../src/application/ports/zipExtractor";
 import { FakeProjectFileRepository } from "../../../fakes/fakeProjectFileRepository";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
+import { FakeSequentialIdGenerator } from "../../../fakes/fakeSequentialIdGenerator";
 
 class FakeZipExtractor implements ZipExtractor {
   public wasCalled = false;
@@ -18,24 +19,6 @@ class FakeZipExtractor implements ZipExtractor {
     this.wasCalled = true;
 
     return this.files;
-  }
-}
-
-class FakeSequentialIdGenerator {
-  private currentIndex = 0;
-
-  constructor(private readonly ids: string[]) {}
-
-  generate(): string {
-    const id = this.ids[this.currentIndex];
-
-    if (!id) {
-      throw new Error("No fake id available");
-    }
-
-    this.currentIndex += 1;
-
-    return id;
   }
 }
 

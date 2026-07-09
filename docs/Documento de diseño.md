@@ -7520,3 +7520,148 @@ RAG disponible cuando termina
 ```
 
 Esto hace que DevMind sea mucho más robusto, más realista y más preparado para proyectos grandes.
+
+
+# Fase 11 — Refactor, endurecimiento y mejoras técnicas
+
+## Objetivo
+
+Esta fase no añade funcionalidad nueva de cara al usuario. Su objetivo es dejar más sólido, seguro y mantenible todo lo construido hasta la Fase 10, corrigiendo inconsistencias detectadas al revisar el proyecto con detalle: duplicación en los tests, un límite de tamaño de ZIP demasiado bajo para proyectos reales y un detalle de seguridad en la generación/verificación de JWT.
+
+Se agrupan aquí varios cambios pequeños e independientes entre sí, cada uno cerrado por separado.
+
+---
+
+## Fase 11.1 — Restricción explícita del algoritmo JWT
+
+### Problema
+
+`JwtTokenService` firmaba y verificaba tokens sin indicar explícitamente qué algoritmo debía usarse, apoyándose en el comportamiento por defecto de la librería `jsonwebtoken`. Aunque en la práctica siempre se firmaba con `HS256`, no forzar ese algoritmo en `verify` deja la puerta abierta a ataques de tipo *algorithm confusion*, donde un token manipulado intenta forzar la verificación con un algoritmo distinto al esperado.
+
+### Cambio realizado
+
+En `src/infrastructure/authAdapters/jwtTokenService.ts` se fija explícitamente el algoritmo en las dos operaciones:
+
+```txt
+sign()   → se añade algorithm: "HS256"
+verify() → se añade algorithms: ["HS256"]
+```
+
+Así, `JwtTokenService` nunca acepta ni genera tokens con un algoritmo distinto al esperado, cerrando esa vía de ataque aunque el comportamiento observable de la aplicación no cambia.
+
+```txt
+✅ sign() firma siempre con HS256
+✅ verify() solo acepta HS256
+✅ Sin cambios de comportamiento para los tokens ya emitidos
+```
+
+---
+
+## Fase 11.2 — Límite de subida de ZIP ampliado
+
+### Problema
+
+Los límites configurados en la Fase 6.1 (protección zip-bomb) eran demasiado conservadores para el uso real esperado de DevMind: `MAX_ZIP_SIZE_MB` a 20 MB y `MAX_ZIP_UNCOMPRESSED_SIZE_MB` a 200 MB. Un proyecto de software mediano-grande, comprimido, puede superar fácilmente esos 20 MB.
+
+### Cambio realizado
+
+Se amplían los valores por defecto en `src/infrastructure/config/env.ts`, y se reflejan también en `.env` y `.env.example`:
+
+```txt
+MAX_ZIP_SIZE_MB               20  → 200
+MAX_ZIP_UNCOMPRESSED_SIZE_MB  200 → 1000
+```
+
+El límite de tamaño descomprimido se mantiene siempre por encima del comprimido, con margen suficiente para código fuente real (que normalmente se expande varias veces al descomprimir), sin dejar de proteger frente a un ZIP bomba que intente expandirse muchísimo más de lo razonable.
+
+No fue necesario tocar `multer` ni `AdmZipExtractor`: ambos ya leían estos límites desde `env.upload`, así que el cambio es puramente de configuración.
+
+```txt
+✅ MAX_ZIP_SIZE_MB por defecto: 200
+✅ MAX_ZIP_UNCOMPRESSED_SIZE_MB por defecto: 1000
+✅ .env y .env.example actualizados
+✅ README actualizado con los nuevos valores
+```
+
+---
+
+## Fase 11.3 — Refactor de fakes duplicados en los tests
+
+### Problema
+
+Al revisar la carpeta `tests/`, varios casos de uso definían su propio *fake* de un mismo puerto o repositorio dentro del propio archivo de test, en lugar de reutilizar los fakes ya existentes en `tests/fakes/`. Esto provocaba tres problemas:
+
+```txt
+1. Duplicación: la misma clase fake reescrita, casi idéntica, en varios archivos.
+2. Inconsistencia de nombres: por ejemplo, InMemoryUserRepository en un test
+   y FakeUserRepository (con el mismo comportamiento) en el resto del proyecto.
+3. Un bug real de tipado: el FakeCodeChunkRepository local de
+   generateCodeChunksForProjectFileUseCase.test.ts no implementaba
+   findByProjectId, un método que el puerto CodeChunkRepository ya exige
+   desde la Fase 10. Esto hacía fallar npm run typecheck.
+```
+
+### Fakes consolidados en `tests/fakes/`
+
+Se crean cinco fakes nuevos, compartidos, cada uno implementando su puerto o repositorio de dominio real (no un tipo local reinventado):
+
+```txt
+fakeSequentialIdGenerator.ts       → IdGenerator que devuelve ids de una lista, en orden
+fakeCodeChunkRepository.ts         → CodeChunkRepository completo (incluye findByProjectId)
+fakeCodeChunkEmbeddingRepository.ts → CodeChunkEmbeddingRepository completo, con
+                                      similarCodeChunks configurable y registro de
+                                      las llamadas a findSimilarByProjectId
+fakeEmbeddingGenerator.ts          → EmbeddingGenerator, registra los textos recibidos
+fakeTokenService.ts                → TokenService, mismo comportamiento que ya se
+                                      usaba solo en el test de login
+```
+
+El fake de un único id ya existente (`fakeIdGenerator.ts`) no se toca: sigue sirviendo para los casos donde solo hace falta un id fijo. El nuevo `fakeSequentialIdGenerator.ts` cubre el caso distinto de necesitar varios ids en orden, que antes se resolvía con dos implementaciones casi iguales (`FakeIdGenerator` con `.shift()` en un test y `FakeSequentialIdGenerator` con índice en otro).
+
+### Archivos de test actualizados
+
+```txt
+getCurrentUserUseCase.test.ts                    → usa FakeUserRepository en vez de
+                                                    una InMemoryUserRepository local
+loginUserUseCase.test.ts                         → usa FakeTokenService compartido
+generateCodeChunksForProjectFileUseCase.test.ts  → usa FakeCodeChunkRepository y
+                                                    FakeSequentialIdGenerator
+                                                    (corrige el bug de tipado)
+indexProjectEmbeddingsUseCase.test.ts            → usa FakeCodeChunkRepository y
+                                                    FakeIdGenerator compartidos
+generateEmbeddingForCodeChunkUseCase.test.ts     → usa FakeCodeChunkEmbeddingRepository,
+                                                    FakeEmbeddingGenerator y
+                                                    FakeIdGenerator compartidos
+askProjectQuestionUseCase.test.ts                → usa FakeCodeChunkEmbeddingRepository
+                                                    y FakeEmbeddingGenerator compartidos
+uploadProjectZipUseCase.test.ts                  → usa FakeSequentialIdGenerator
+                                                    compartido
+```
+
+Los fakes que solo se usaban en un único archivo (por ejemplo `FakeZipExtractor`, `FakeAnswerGenerator`, `FakeProjectIndexingScheduler` o `FakeFileHashGenerator`) se dejan donde estaban: extraerlos no habría eliminado duplicación real, solo habría movido código de sitio.
+
+### Verificación
+
+Tras el refactor:
+
+```txt
+npm run typecheck  → sin errores (incluido el bug de findByProjectId, ya corregido)
+npm run test (unit) → 80/82 tests en verde
+```
+
+Los 2 tests que seguían fallando (`askProjectQuestionUseCase.test.ts`, esperando `limit: 5` cuando el caso de uso real ya pedía `limit: 7`) son un desajuste anterior a este refactor, no introducido por él, y quedan pendientes de corregir en el propio test.
+
+```txt
+✅ Fakes duplicados consolidados en tests/fakes/
+✅ Un fake por puerto/repositorio, reutilizado donde corresponde
+✅ Corregido el bug de tipado en FakeCodeChunkRepository
+✅ InMemoryUserRepository unificado con FakeUserRepository
+✅ npm run typecheck sin errores
+✅ Suite de tests unitarios verificada tras el cambio
+```
+
+---
+
+## Estado tras la Fase 11
+
+Esta fase no cambia el comportamiento observable de la API. Es una fase de consolidación: mismo comportamiento, código más seguro (JWT), configuración más realista (límite de ZIP) y tests más mantenibles y consistentes (fakes compartidos), sin la deuda de tipado que arrastraba `generateCodeChunksForProjectFileUseCase.test.ts`.

@@ -1,29 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { GetCurrentUserUseCase } from "../../../../src/application/auth/getCurrentUserUseCase";
 import { User } from "../../../../src/domain/entities/user";
-import { UserRepository } from "../../../../src/domain/repository/userRepository";
 import { UserNotFoundError } from "../../../../src/shared/errors/userNotFoundError";
-
-class InMemoryUserRepository implements UserRepository {
-  public users: User[] = [];
-
-  async findById(id: string): Promise<User | null> {
-    return this.users.find((user) => user.id === id) ?? null;
-  }
-
-  async findByEmail(email: string): Promise<User | null> {
-    return this.users.find((user) => user.email === email) ?? null;
-  }
-
-  async save(user: User): Promise<User> {
-    this.users.push(user);
-    return user;
-  }
-}
+import { FakeUserRepository } from "../../../fakes/fakeUserRepository";
 
 describe("GetCurrentUserUseCase", () => {
   it("should return the current user", async () => {
-    const userRepository = new InMemoryUserRepository();
+    const userRepository = new FakeUserRepository();
 
     await userRepository.save(
       new User(
@@ -49,7 +32,7 @@ describe("GetCurrentUserUseCase", () => {
   });
 
   it("should throw when user does not exist", async () => {
-    const userRepository = new InMemoryUserRepository();
+    const userRepository = new FakeUserRepository();
 
     const getCurrentUserUseCase = new GetCurrentUserUseCase(userRepository);
 

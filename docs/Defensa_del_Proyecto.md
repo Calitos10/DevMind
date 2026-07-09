@@ -622,7 +622,7 @@ indexación automática en segundo plano
 embeddings
 ```
 
-# 9. Embeddings, pgvector e indexación asíncrona
+## 9. Embeddings, pgvector e indexación asíncrona
 
 Un embedding es una representación numérica de un texto. En DevMind, se genera un embedding a partir del contenido de cada `CodeChunk`.
 
@@ -654,7 +654,7 @@ Cada embedding está relacionado con:
 
 ---
 
-## Por qué se separó la indexación de la subida del ZIP
+### Por qué se separó la indexación de la subida del ZIP
 
 Al principio, la generación de embeddings estaba más unida al flujo de subida del ZIP. El problema es que, si un proyecto tenía muchos archivos y muchos chunks, DevMind tenía que hacer muchas llamadas seguidas al modelo de embeddings.
 
@@ -683,7 +683,7 @@ De esta forma, la subida del ZIP termina antes y la generación de embeddings se
 
 ---
 
-## Cuándo se lanza la indexación
+### Cuándo se lanza la indexación
 
 Cuando termina el caso de uso `UploadProjectZipUseCase`, DevMind comprueba si ha habido cambios relevantes en el proyecto.
 
@@ -716,7 +716,7 @@ Gracias a esto, el endpoint de subida del ZIP puede responder al frontend sin es
 
 ---
 
-## AsyncProjectIndexingScheduler
+### AsyncProjectIndexingScheduler
 
 La implementación real del scheduler es `AsyncProjectIndexingScheduler`.
 
@@ -740,7 +740,7 @@ Además, si ocurre un error durante la indexación, el scheduler lo captura y lo
 
 ---
 
-## IndexProjectEmbeddingsUseCase
+### IndexProjectEmbeddingsUseCase
 
 El caso de uso `IndexProjectEmbeddingsUseCase` es el encargado de generar los embeddings de todos los chunks de un proyecto.
 
@@ -768,7 +768,7 @@ El job se marca con estado `processing` y se inicializan los contadores:
 
 ---
 
-## Generación y guardado de embeddings
+### Generación y guardado de embeddings
 
 Después, el caso de uso recorre todos los chunks del proyecto.
 
@@ -793,7 +793,7 @@ Ese endpoint permite saber cuántos chunks hay en total, cuántos se han procesa
 
 ---
 
-## Estados de la indexación
+### Estados de la indexación
 
 La tabla `project_indexing_jobs` permite saber en qué estado está el proceso de indexación.
 
@@ -818,7 +818,7 @@ Esto confirma que los embeddings del proyecto ya han sido generados y guardados.
 
 ---
 
-## Qué ocurre si se resube un ZIP actualizado
+### Qué ocurre si se resube un ZIP actualizado
 
 Si el usuario vuelve a subir un ZIP actualizado del mismo proyecto, DevMind vuelve a hacer la sincronización por `path` y `hash`.
 
@@ -832,7 +832,7 @@ Además, cuando se genera un embedding para un chunk que ya tenía embedding ant
 
 ---
 
-## Resumen del flujo completo
+### Resumen del flujo completo
 
 El flujo completo queda así:
 
@@ -868,26 +868,242 @@ cuando termina, status = completed
 
 En resumen, la indexación asíncrona permite que DevMind procese proyectos grandes sin bloquear la subida del ZIP. Los embeddings se generan en segundo plano, se guardan en PostgreSQL usando pgvector y el frontend puede consultar el progreso mediante el endpoint de estado de indexación.
 
----
-
-## Frase clave para memorizar
-
 ```txt
 DevMind separa la subida del ZIP de la generación de embeddings. Primero guarda archivos y chunks, responde rápido al usuario y después genera los embeddings en segundo plano, actualizando el estado en project_indexing_jobs.
 ```
 
 
+# 10. Flujo RAG de preguntas
+
+Una vez que el usuario ha subido un ZIP, DevMind ha creado los `ProjectFiles`, ha generado los `CodeChunks` y ha indexado sus embeddings en PostgreSQL con pgvector, el usuario puede realizar preguntas en lenguaje natural sobre el código del proyecto.
+
+El flujo de preguntas se realiza mediante el endpoint:
+
+```txt
+POST /projects/:id/ask
+```
+
+En este endpoint, `:id` representa el identificador del proyecto sobre el que se quiere preguntar.
+
+---
+
+## Entrada de la petición
+
+El usuario escribe una pregunta en el frontend. Esa pregunta se envía al backend en el body de la petición.
+
+La petición pasa primero por `authMiddleware`, que comprueba que el usuario haya enviado un token JWT válido. Si el token es correcto, el middleware extrae el `userId` del usuario autenticado y lo añade a la request.
+
+Después, la petición pasa por el middleware de validación del body. Este middleware utiliza Zod para comprobar que la pregunta existe y que tiene un formato válido.
+
+Una vez superados los middlewares, la petición llega al método `ask` del `ProjectController`.
+
+---
+
+## Llamada al caso de uso
+
+El método `ask` del controlador recoge tres datos principales:
+
+- el `projectId`, que viene de los parámetros de la URL;
+- el `userId`, que viene del token JWT validado por `authMiddleware`;
+- la `question`, que viene en el body de la petición.
+
+Con esos datos llama al caso de uso encargado de responder preguntas sobre un proyecto, `AskProjectQuestionUseCase`.
+
+Este caso de uso coordina todo el flujo RAG.
+
+---
+
+## Validación del proyecto
+
+Lo primero que hace el caso de uso es comprobar que la pregunta no esté vacía.
+
+Después comprueba que el proyecto existe y pertenece al usuario autenticado. Para ello busca el proyecto usando el `projectId` y el `ownerId`.
+
+Esta comprobación es importante porque evita que un usuario pueda hacer preguntas sobre proyectos que no le pertenecen, aunque conozca su identificador.
+
+Si el proyecto no existe o no pertenece al usuario autenticado, DevMind devuelve un error de proyecto no encontrado.
+
+---
+
+## Conversión de la pregunta en embedding
+
+Una vez validado el proyecto, DevMind convierte la pregunta del usuario en un embedding.
+
+Para ello utiliza el puerto `EmbeddingGenerator`, cuya implementación real es `GenkitEmbeddingGenerator`.
+
+El objetivo de este paso es transformar la pregunta en un vector numérico, igual que se hizo previamente con los chunks del código.
+
+El flujo es:
+
+```txt
+pregunta del usuario
+↓
+EmbeddingGenerator
+↓
+embedding de la pregunta
+```
+
+Esto permite comparar la pregunta con los embeddings de los chunks guardados en PostgreSQL.
+
+---
+
+## Búsqueda de chunks similares con pgvector
+
+Cuando DevMind ya tiene la pregunta transformada en embedding, utiliza el repositorio de embeddings para buscar los chunks más parecidos dentro del proyecto.
+
+Para ello llama a un método como:
+
+```txt
+findSimilarByProjectId
+```
+
+Este método recibe:
+
+- el `projectId`;
+- el embedding de la pregunta;
+- un límite de resultados.
+
+El `projectId` es fundamental, porque la búsqueda debe limitarse únicamente a los chunks del proyecto sobre el que el usuario está preguntando.
+
+Si no se filtrase por `projectId`, podrían mezclarse chunks de otros proyectos o incluso de otros usuarios, lo cual sería un problema grave de seguridad y de calidad de respuesta.
+
+Internamente, PostgreSQL con pgvector compara el embedding de la pregunta con los embeddings guardados en la tabla `code_chunk_embeddings`.
+
+El resultado es una lista de chunks ordenados por similitud. Es decir, DevMind recupera los fragmentos de código que parecen más relevantes para responder a la pregunta del usuario.
+
+---
+
+## Generación de la respuesta con contexto
+
+Una vez encontrados los chunks más similares, DevMind usa esos chunks como contexto para generar la respuesta.
+
+El caso de uso llama al puerto `AnswerGenerator`, cuya implementación real es `GenkitAnswerGenerator`.
+
+A este generador se le pasan dos cosas:
+
+- la pregunta original del usuario;
+- los chunks de código recuperados como contexto.
+
+Es importante destacar que al modelo de respuesta se le pasa la pregunta en texto normal, no la pregunta en formato embedding. El embedding solo se utiliza para buscar los chunks relevantes.
+
+Después, `GenkitAnswerGenerator` construye un prompt que incluye:
+
+- instrucciones para el modelo;
+- la pregunta del usuario;
+- los fragmentos de código relevantes;
+- información de fuente, como archivo y líneas.
+
+Ese prompt se envía a Genkit, que llama al modelo de IA configurado para generar la respuesta final.
+
+---
+
+## Respuesta al frontend
+
+Finalmente, DevMind devuelve al frontend una respuesta con:
+
+- la respuesta generada por la IA;
+- las fuentes utilizadas para responder.
+
+Las fuentes son importantes porque permiten saber de qué archivos y líneas ha salido la información usada para construir la respuesta.
+
+De forma simplificada, la respuesta puede contener:
+
+```json
+{
+  "answer": "Respuesta generada por la IA...",
+  "sources": [
+    {
+      "path": "src/application/auth/registerUserUseCase.ts",
+      "startLine": 1,
+      "endLine": 40
+    }
+  ]
+}
+```
+
+Esto hace que DevMind no sea solo un chat genérico, sino un asistente que responde basándose en partes concretas del proyecto.
+
+---
+
+## Qué pasa si no hay contexto suficiente
+
+Si DevMind no encuentra chunks relevantes para responder la pregunta, no debería inventar una respuesta.
+
+En ese caso, puede devolver un mensaje indicando que no tiene suficiente información del proyecto para responder.
+
+Esto es importante porque una de las ideas del RAG es que el modelo responda usando el contexto recuperado, no inventando información que no está en el proyecto.
+
+---
+
+## Resumen del flujo RAG
+
+El flujo completo de preguntas queda así:
+
+```txt
+Usuario hace una pregunta
+↓
+POST /projects/:id/ask
+↓
+authMiddleware valida el JWT
+↓
+validateBody valida la pregunta
+↓
+ProjectController.ask
+↓
+AskProjectQuestionUseCase
+↓
+comprueba que el proyecto pertenece al usuario
+↓
+genera embedding de la pregunta
+↓
+busca chunks similares en PostgreSQL con pgvector
+↓
+pasa pregunta + chunks al AnswerGenerator
+↓
+Genkit genera la respuesta final
+↓
+DevMind devuelve answer + sources
+```
+
+En resumen, DevMind usa RAG para no enviar todo el proyecto completo a la IA. Primero busca los fragmentos de código más relevantes mediante embeddings y pgvector, y después usa solo esos fragmentos como contexto para generar una respuesta más precisa y basada en el proyecto.
+
+---
 
 
-## 12. Flujo RAG de preguntas
+```txt
+En el flujo RAG, DevMind convierte la pregunta en un embedding, busca en pgvector los chunks más similares del proyecto y usa esos chunks como contexto para que la IA genere una respuesta con fuentes.
+```
 
-## 13. Tests y TDD
+Otra frase importante:
 
-## 14. Decisiones técnicas importantes
+```txt
+El embedding de la pregunta solo se usa para recuperar contexto. La respuesta final se genera con la pregunta original en texto y los chunks recuperados.
+```
 
-## 15. Limitaciones actuales
 
-## 16. Mejoras futuras
+## 11. Tests y TDD
+
+## 12. Decisiones técnicas importantes
+
+## 13. Limitaciones actuales
+
+### La indexación de embeddings no es incremental
+
+La generación de `CodeChunks` sí es selectiva: solo se regeneran los chunks de los archivos que se han creado o actualizado en esa subida de ZIP. Los archivos `unchanged` no se tocan.
+
+Sin embargo, `IndexProjectEmbeddingsUseCase` no sigue esa misma lógica. Cuando se dispara la indexación, este caso de uso busca **todos** los `CodeChunks` del proyecto con `codeChunkRepository.findByProjectId(projectId)`, sin filtrar por qué archivos cambiaron en esa subida concreta. Después recorre esa lista completa y llama a `GenerateEmbeddingForCodeChunkUseCase` para cada uno, y este a su vez llama siempre al generador real de embeddings (Gemini vía Genkit) y siempre borra y vuelve a crear el embedding, sin comprobar antes si el chunk ya tenía uno vigente.
+
+En la práctica, esto significa que si se resube un ZIP en el que solo ha cambiado un archivo (por ejemplo, 3 chunks nuevos o actualizados de un proyecto con 500 chunks en total), la indexación en segundo plano vuelve a generar embeddings para los 500 chunks, no solo para los 3 que realmente cambiaron.
+
+Esto tiene tres consecuencias:
+
+- Llamadas innecesarias a la API de Gemini para chunks que no han cambiado, con el coste y consumo de cuota que eso implica.
+- Tiempo total de indexación mucho mayor del necesario, multiplicado además por el delay configurado entre chunks (`INDEXING_DELAY_BETWEEN_CHUNKS_MS`).
+- El estado `processing`/`completed` de `project_indexing_jobs` refleja el progreso sobre todos los chunks del proyecto, no sobre los cambios reales de esa subida.
+
+La mejora natural sería que `IndexProjectEmbeddingsUseCase` solo procesase los chunks pertenecientes a los `ProjectFile` marcados como `created`/`updated` en esa subida (esa información ya la calcula `UploadProjectZipUseCase`), o que `GenerateEmbeddingForCodeChunkUseCase` comprobara si el chunk ya tiene un embedding vigente antes de volver a llamar a Gemini.
+
+## 14. Mejoras futuras
 
 
 ___________________________________________

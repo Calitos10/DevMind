@@ -1,63 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { CodeChunk } from "../../../../src/domain/entities/codeChunk";
-import { CodeChunkEmbedding } from "../../../../src/domain/entities/codeChunkEmbedding";
-import { CodeChunkEmbeddingRepository } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
-import { IdGenerator } from "../../../../src/application/ports/idGeneratorPort";
 import { GenerateEmbeddingForCodeChunkUseCase } from "../../../../src/application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
-import { SimilarCodeChunk } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
-
-class FakeCodeChunkEmbeddingRepository implements CodeChunkEmbeddingRepository {
-  public embeddings: CodeChunkEmbedding[] = [];
-
-  async save(
-    codeChunkEmbedding: CodeChunkEmbedding,
-  ): Promise<CodeChunkEmbedding> {
-    this.embeddings.push(codeChunkEmbedding);
-    return codeChunkEmbedding;
-  }
-
-  async findByCodeChunkId(
-    codeChunkId: string,
-  ): Promise<CodeChunkEmbedding | null> {
-    return (
-      this.embeddings.find(
-        (embedding) => embedding.codeChunkId === codeChunkId,
-      ) ?? null
-    );
-  }
-
-  async deleteByCodeChunkId(codeChunkId: string): Promise<void> {
-    this.embeddings = this.embeddings.filter(
-      (embedding) => embedding.codeChunkId !== codeChunkId,
-    );
-  }
-  async findSimilarByProjectId(): Promise<SimilarCodeChunk[]> {
-    return [];
-  }
-}
-
-class FakeEmbeddingGenerator {
-  public receivedTexts: string[] = [];
-
-  async generateEmbedding(text: string): Promise<number[]> {
-    this.receivedTexts.push(text);
-
-    return [0.1, 0.2, 0.3];
-  }
-}
-
-class FakeIdGenerator implements IdGenerator {
-  generate(): string {
-    return "embedding-1";
-  }
-}
+import { FakeCodeChunkEmbeddingRepository } from "../../../fakes/fakeCodeChunkEmbeddingRepository";
+import { FakeEmbeddingGenerator } from "../../../fakes/fakeEmbeddingGenerator";
+import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
 
 describe("GenerateEmbeddingForCodeChunkUseCase", () => {
   it("generates and stores an embedding for a code chunk", async () => {
     const repository = new FakeCodeChunkEmbeddingRepository();
     const embeddingGenerator = new FakeEmbeddingGenerator();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeIdGenerator("embedding-1");
 
     const useCase = new GenerateEmbeddingForCodeChunkUseCase(
       repository,
@@ -101,7 +54,7 @@ describe("GenerateEmbeddingForCodeChunkUseCase", () => {
   it("replaces an existing embedding for the same code chunk", async () => {
     const repository = new FakeCodeChunkEmbeddingRepository();
     const embeddingGenerator = new FakeEmbeddingGenerator();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeIdGenerator("embedding-1");
 
     repository.embeddings.push({
       id: "old-embedding",

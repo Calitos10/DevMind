@@ -1,68 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type {
-  CodeChunkEmbeddingRepository,
-  SimilarCodeChunk,
-} from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
-import type { CodeChunkEmbedding } from "../../../../src/domain/entities/codeChunkEmbedding";
-import type { EmbeddingGenerator } from "../../../../src/application/ports/embeddingGenerator";
 import type { AnswerGenerator } from "../../../../src/application/ports/answerGenerator";
+import type { SimilarCodeChunk } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
 import { AskProjectQuestionUseCase } from "../../../../src/application/projectQuestions/askProjectQuestionUseCase";
+import { FakeCodeChunkEmbeddingRepository } from "../../../fakes/fakeCodeChunkEmbeddingRepository";
+import { FakeEmbeddingGenerator } from "../../../fakes/fakeEmbeddingGenerator";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
-
-class FakeEmbeddingGenerator implements EmbeddingGenerator {
-  public receivedTexts: string[] = [];
-
-  async generateEmbedding(text: string): Promise<number[]> {
-    this.receivedTexts.push(text);
-
-    return [0.1, 0.2, 0.3];
-  }
-}
-
-class FakeCodeChunkEmbeddingRepository implements CodeChunkEmbeddingRepository {
-  public receivedFindSimilarInputs: Array<{
-    projectId: string;
-    embedding: number[];
-    limit: number;
-  }> = [];
-
-  public similarCodeChunks: SimilarCodeChunk[] = [
-    {
-      codeChunkId: "code-chunk-1",
-      projectId: "project-1",
-      projectFileId: "project-file-1",
-      path: "src/auth/registerUserUseCase.ts",
-      content: "export class RegisterUserUseCase {}",
-      startLine: 10,
-      endLine: 45,
-      index: 0,
-      distance: 0.12,
-    },
-  ];
-
-  async save(
-    codeChunkEmbedding: CodeChunkEmbedding,
-  ): Promise<CodeChunkEmbedding> {
-    return codeChunkEmbedding;
-  }
-
-  async findByCodeChunkId(): Promise<CodeChunkEmbedding | null> {
-    return null;
-  }
-
-  async deleteByCodeChunkId(): Promise<void> {}
-
-  async findSimilarByProjectId(input: {
-    projectId: string;
-    embedding: number[];
-    limit: number;
-  }): Promise<SimilarCodeChunk[]> {
-    this.receivedFindSimilarInputs.push(input);
-
-    return this.similarCodeChunks;
-  }
-}
 
 class FakeAnswerGenerator implements AnswerGenerator {
   public receivedInputs: Array<{
@@ -86,6 +29,20 @@ describe("AskProjectQuestionUseCase", () => {
     const embeddingGenerator = new FakeEmbeddingGenerator();
     const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
     const answerGenerator = new FakeAnswerGenerator();
+
+    codeChunkEmbeddingRepository.similarCodeChunks = [
+      {
+        codeChunkId: "code-chunk-1",
+        projectId: "project-1",
+        projectFileId: "project-file-1",
+        path: "src/auth/registerUserUseCase.ts",
+        content: "export class RegisterUserUseCase {}",
+        startLine: 10,
+        endLine: 45,
+        index: 0,
+        distance: 0.12,
+      },
+    ];
 
     projectRepository.projects.push({
       id: "project-1",

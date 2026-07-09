@@ -1,38 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { GenerateCodeChunksForProjectFileUseCase } from "../../../../src/application/codeChunk/generateCodeChunksForProjectFileUseCase";
-
-type SavedCodeChunk = {
-  id: string;
-  projectId: string;
-  projectFileId: string;
-  content: string;
-  startLine: number;
-  endLine: number;
-  index: number;
-  createdAt: Date;
-};
-
-class FakeCodeChunkRepository {
-  public codeChunks: SavedCodeChunk[] = [];
-  public deletedProjectFileIds: string[] = [];
-
-  async saveMany(codeChunks: SavedCodeChunk[]): Promise<SavedCodeChunk[]> {
-    this.codeChunks.push(...codeChunks);
-
-    return codeChunks;
-  }
-
-  async findByProjectFileId(projectFileId: string): Promise<SavedCodeChunk[]> {
-    return this.codeChunks.filter(
-      (codeChunk) => codeChunk.projectFileId === projectFileId,
-    );
-  }
-
-  async deleteByProjectFileId(projectFileId: string): Promise<void> {
-    this.deletedProjectFileIds.push(projectFileId);
-  }
-}
+import { FakeCodeChunkRepository } from "../../../fakes/fakeCodeChunkRepository";
+import { FakeSequentialIdGenerator } from "../../../fakes/fakeSequentialIdGenerator";
 
 class FakeCodeChunker {
   chunk() {
@@ -59,25 +29,11 @@ class FakeEmptyCodeChunker {
   }
 }
 
-class FakeIdGenerator {
-  private ids = ["chunk-1", "chunk-2"];
-
-  generate(): string {
-    const id = this.ids.shift();
-
-    if (!id) {
-      throw new Error("No fake ids left");
-    }
-
-    return id;
-  }
-}
-
 describe("GenerateCodeChunksForProjectFileUseCase", () => {
   it("generates and saves code chunks for a project file", async () => {
     const codeChunkRepository = new FakeCodeChunkRepository();
     const codeChunker = new FakeCodeChunker();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeSequentialIdGenerator(["chunk-1", "chunk-2"]);
 
     const useCase = new GenerateCodeChunksForProjectFileUseCase(
       codeChunkRepository,
@@ -137,7 +93,7 @@ describe("GenerateCodeChunksForProjectFileUseCase", () => {
   it("deletes old chunks and returns zero chunks when the chunker returns no chunks", async () => {
     const codeChunkRepository = new FakeCodeChunkRepository();
     const codeChunker = new FakeEmptyCodeChunker();
-    const idGenerator = new FakeIdGenerator();
+    const idGenerator = new FakeSequentialIdGenerator(["chunk-1", "chunk-2"]);
 
     const useCase = new GenerateCodeChunksForProjectFileUseCase(
       codeChunkRepository,

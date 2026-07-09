@@ -55,7 +55,7 @@ export class AskProjectQuestionUseCase {
       await this.codeChunkEmbeddingRepository.findSimilarByProjectId({
         projectId: input.projectId,
         embedding: questionEmbedding,
-        limit: 7,
+        limit: 5,
       });
 
     if (contextChunks.length === 0) {
