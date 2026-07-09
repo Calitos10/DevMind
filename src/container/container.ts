@@ -58,7 +58,9 @@ import { GenerateCodeChunksForProjectFileUseCase } from "../application/codeChun
 
 //[IMPORTS PARA LA PARTE DE GENERAR EMBEDDING]
 import { PostgresCodeChunkEmbeddingRepository } from "../infrastructure/repositoryAdapter/postgres/postgresCodeChunkEmbeddingRepository";
+import type { EmbeddingGenerator } from "../application/ports/embeddingGenerator";
 import { GenkitEmbeddingGenerator } from "../infrastructure/genkit/genkitEmbeddingGenerator";
+import { TestEmbeddingGenerator } from "../infrastructure/genkit/testing/testEmbeddingGenerator";
 import { GenerateEmbeddingForCodeChunkUseCase } from "../application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
 
 
@@ -110,7 +112,10 @@ const idGenerator = new CryptoIdGenerator();
 const fileHashGenerator = new CryptoFileHashGenerator();
 const zipExtractor = new AdmZipExtractor();
 const codeChunker = new LineCodeChunker();
-const embeddingGenerator = new GenkitEmbeddingGenerator();
+const embeddingGenerator: EmbeddingGenerator =
+  process.env.NODE_ENV === "test"
+    ? new TestEmbeddingGenerator()
+    : new GenkitEmbeddingGenerator();
 const delay = new TimeoutDelay();
 
 

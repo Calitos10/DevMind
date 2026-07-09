@@ -1081,13 +1081,13 @@ El embedding de la pregunta solo se usa para recuperar contexto. La respuesta fi
 ```
 
 
-## 11. Tests y TDD
+# 11. Tests y TDD
 
-## 12. Decisiones técnicas importantes
+# 12. Decisiones técnicas importantes
 
-## 13. Limitaciones actuales
+# 13. Limitaciones actuales
 
-### La indexación de embeddings no es incremental
+## La indexación de embeddings no es incremental
 
 La generación de `CodeChunks` sí es selectiva: solo se regeneran los chunks de los archivos que se han creado o actualizado en esa subida de ZIP. Los archivos `unchanged` no se tocan.
 
@@ -1103,7 +1103,7 @@ Esto tiene tres consecuencias:
 
 La mejora natural sería que `IndexProjectEmbeddingsUseCase` solo procesase los chunks pertenecientes a los `ProjectFile` marcados como `created`/`updated` en esa subida (esa información ya la calcula `UploadProjectZipUseCase`), o que `GenerateEmbeddingForCodeChunkUseCase` comprobara si el chunk ya tiene un embedding vigente antes de volver a llamar a Gemini.
 
-### Faltan índices en las claves foráneas de la base de datos
+## Faltan índices en las claves foráneas de la base de datos
 
 En PostgreSQL, declarar una `FOREIGN KEY` **no** crea automáticamente un índice sobre esa columna (solo se indexan solas las `PRIMARY KEY` y las columnas `UNIQUE`). En las migraciones actuales, las tablas `project_files` y `code_chunks` no tienen un índice explícito sobre sus claves foráneas:
 
@@ -1117,17 +1117,29 @@ Justo sobre esas columnas se apoyan las consultas más frecuentes del sistema: `
 
 La mejora natural, si el proyecto creciera a un volumen real de datos, sería añadir una migración con `CREATE INDEX` sobre esas tres columnas. Cabe destacar que en la tabla de embeddings (`code_chunk_embeddings`) sí se crearon índices manualmente, por lo que el patrón ya está aplicado donde el rendimiento importaba desde el principio.
 
-## 14. Mejoras futuras
+## El caso de uso `UploadProjectZipUseCase` concentra demasiadas responsabilidades
 
-### Reintentos con backoff ante fallos transitorios del proveedor de embeddings
+`UploadProjectZipUseCase` es el caso de uso más complejo del proyecto (en torno a 200 líneas) y mezcla en un único `execute` varias responsabilidades: comprobar la propiedad del proyecto, extraer el ZIP, filtrar los archivos, detectar el lenguaje, calcular el hash, sincronizar por `path` + `hash` (crear/actualizar/borrar/mantener), y programar la indexación en segundo plano.
 
-#### El problema
+Además, reglas que en realidad son de **dominio** viven como funciones sueltas al final del archivo del caso de uso: `detectLanguageFromPath`, `isIgnoredProjectFilePath` e `isBinaryProjectFile`. Es decir, conocimiento de negocio ("qué carpetas se ignoran", "qué se considera un archivo binario", "cómo se detecta el lenguaje a partir de la extensión") está incrustado en un caso de uso cuya función principal debería ser **orquestar**, no contener esas reglas.
+
+A esto se suma un detalle de tipado: los casos de uso anidados (generación de chunks y de embeddings) se declaran como dependencias mediante un `type` local anónimo del estilo `{ execute(input): Promise<unknown> }`, en lugar de un puerto explícito en `application/ports`. Eso acopla de forma implícita y hace perder el tipado del resultado (`Promise<unknown>`).
+
+**Por qué se ha dejado como limitación consciente y no se ha refactorizado:** el caso de uso funciona correctamente y está bien cubierto por tests de integración (subida y sincronización por `path` + `hash`). Un refactor de esta pieza es el cambio con más riesgo de todos los detectados, porque toca lógica central que ya está en producción, y su beneficio es sobre todo de mantenibilidad y limpieza arquitectónica, no de comportamiento. Para el alcance de este TFM se ha priorizado la estabilidad, dejándolo documentado como deuda técnica asumida de forma deliberada.
+
+La mejora natural sería extraer las reglas de dominio a un servicio propio (por ejemplo un `ProjectFileClassifier` / `LanguageDetector`) y, opcionalmente, un `ProjectFilesSynchronizer` para el diff de sincronización, además de definir puertos explícitos para los casos de uso anidados. Así el `UploadProjectZipUseCase` quedaría como un orquestador delgado, más fácil de leer y de testear por partes.
+
+# 14. Mejoras futuras
+
+## Reintentos con backoff ante fallos transitorios del proveedor de embeddings
+
+### El problema
 
 La generación de embeddings depende de un servicio externo (Gemini vía Genkit). Como todo servicio externo, ese proveedor puede fallar de forma **puntual y transitoria**: un `503 Service Unavailable` (servicio momentáneamente saturado o caído unos segundos) o un `429 Resource Exhausted` (se ha superado el límite de peticiones por minuto). Estos fallos no significan que la petición esté mal, sino que "ahora mismo no puedo, inténtalo de nuevo en un momento".
 
 Actualmente, `IndexProjectEmbeddingsUseCase` tiene el bloque `try/catch` envolviendo **todo el bucle** que recorre los chunks. Esto tiene una consecuencia dura: en cuanto **un solo chunk** falla al generar su embedding, se lanza una excepción que aborta la indexación entera. El job se marca como `failed`, y todo el progreso anterior de esa ejecución se pierde. No hay ningún intento de reintentar el chunk que ha fallado antes de rendirse.
 
-#### Qué me pasó realmente (caso que motivó esta mejora)
+### Qué me pasó realmente (caso que motivó esta mejora)
 
 Al subir un proyecto real, la indexación en segundo plano arrancó correctamente y empezó a generar embeddings. En el chunk número 82 de un total de 397, Gemini devolvió:
 
@@ -1141,7 +1153,7 @@ Fue un fallo transitorio: el endpoint de embeddings de Gemini estaba caído dura
 
 Lo frustrante es que, si hubiera reintentado ese chunk una o dos veces esperando un poco, lo más probable es que el segundo intento hubiera funcionado y no se habría perdido nada.
 
-#### Cómo se soluciona: reintentos con backoff exponencial
+### Cómo se soluciona: reintentos con backoff exponencial
 
 La técnica estándar para fallos transitorios de un servicio externo es **reintentar la operación esperando cada vez un poco más** antes de rendirse. A esa espera creciente se le llama *exponential backoff*:
 
@@ -1156,7 +1168,7 @@ La espera creciente es importante: si el proveedor está saturado, machacarlo co
 
 Un matiz clave: **no todos los errores deben reintentarse**. Solo tiene sentido reintentar los **transitorios** (`503 UNAVAILABLE`, `429 RESOURCE_EXHAUSTED`). Un error "de verdad" —por ejemplo una API key inválida (`401`) o una petición malformada (`400`)— no se va a arreglar reintentando, así que debe fallar de inmediato sin gastar reintentos.
 
-#### Cómo se implementaría en el proyecto
+### Cómo se implementaría en el proyecto
 
 Respetando la arquitectura hexagonal, el reintento vive en la **capa de infraestructura** (es un detalle de cómo se habla con el proveedor externo), no en los casos de uso:
 
@@ -1198,6 +1210,42 @@ Respetando la arquitectura hexagonal, el reintento vive en la **capa de infraest
 ```
 
 En resumen, esta mejora tiene dos capas complementarias: los **reintentos con backoff** hacen que la mayoría de fallos transitorios (como el 503 que me ocurrió) se resuelvan solos sin perder progreso; y el **error tipado + errorMessage en el estado** cubren el caso en que el proveedor esté caído de verdad, informando al usuario con un mensaje claro en lugar de un fallo mudo. Son cambios independientes entre sí y del resto del sistema, por lo que pueden implementarse por separado.
+
+### Cola de indexación real (workers, reintentos y persistencia)
+
+**Estado actual:** la indexación en segundo plano se lanza con un patrón "fire-and-forget" dentro del propio proceso de la API (`AsyncProjectIndexingScheduler` hace `void useCase.execute().catch(console.error)`). Esto implica que, si el servidor se reinicia a mitad de una indexación, el trabajo se pierde; no hay reintentos automáticos; no hay control de concurrencia si llegan varias subidas a la vez; y un job puede quedarse en estado `processing` para siempre si el proceso muere.
+
+**Mejora:** sustituir ese scheduler por una **cola persistente** con workers, reintentos y recuperación de trabajos colgados. Una opción muy natural es `pg-boss`, que usa el **propio PostgreSQL** como cola (sin añadir infraestructura nueva); otra es `BullMQ` con Redis. Lo importante es que la arquitectura ya está preparada: existe el puerto `ProjectIndexingScheduler`, así que bastaría con crear un nuevo adaptador (`QueueProjectIndexingScheduler`) e inyectarlo desde el `container`, **sin tocar ningún caso de uso**.
+
+### Índice ANN de pgvector (HNSW) para la búsqueda semántica
+
+**Estado actual:** la búsqueda de similitud del RAG (`embedding <-> $consulta`) hace un KNN **exacto**: recorre todos los embeddings del proyecto para ordenarlos por distancia. Es correcto y suficiente para el volumen actual, pero su coste crece linealmente con el número de embeddings.
+
+**Mejora:** crear un índice aproximado **HNSW** (o `IVFFlat`) sobre la columna `code_chunk_embeddings.embedding`. El *trade-off* es claro: la búsqueda pasa a ser **aproximada** (una precisión ligeramente menor) a cambio de una velocidad mucho mayor cuando hay muchos vectores. Es la mejora de rendimiento natural del RAG si el sistema creciera a proyectos grandes o a muchos proyectos.
+
+### Transacciones en la subida de ZIP
+
+**Estado actual:** `UploadProjectZipUseCase` realiza muchas escrituras encadenadas (crear, actualizar y borrar `ProjectFiles` y sus `CodeChunks`) **sin envolverlas en una transacción**. Si una de esas operaciones falla a mitad del proceso, la base de datos puede quedar en un estado inconsistente: parte de los archivos sincronizados y parte no.
+
+**Mejora:** envolver todo el proceso de sincronización en una **transacción de PostgreSQL** (`BEGIN` / `COMMIT` / `ROLLBACK`), de forma que la subida sea **atómica**: o se aplica entera o no se aplica nada. Requiere que los repositorios implicados puedan recibir un cliente o contexto de transacción compartido, en lugar de usar cada uno una conexión suelta del pool.
+
+### Observabilidad: logs estructurados y métricas
+
+**Estado actual:** la aplicación solo tiene `console.log` / `console.error` sueltos. No hay **logs estructurados** (JSON con nivel, timestamp y contexto de la petición), ni **métricas** (número de indexaciones, latencia de las llamadas a Gemini, tasa de fallos, etc.), ni trazas distribuidas. Esto hace difícil diagnosticar qué está pasando en un entorno real.
+
+**Mejora:** introducir un **logger estructurado** (por ejemplo `pino`) con niveles configurables por entorno, sustituir los `console.*` por ese logger, y exponer métricas mediante Prometheus u OpenTelemetry. Con eso se podría, por ejemplo, monitorizar cuántas indexaciones fallan por errores de Gemini o cuánto tarda de media generar un embedding.
+
+### Chunking basado en AST (sintáctico) en lugar de por líneas
+
+**Estado actual:** `LineCodeChunker` divide el contenido **por número de líneas** (bloques de 80 líneas con 10 de solapamiento), sin tener en cuenta la estructura del código. Esto significa que un chunk puede cortar una función o una clase por la mitad, lo que puede empeorar la calidad de la recuperación semántica: un fragmento partido representa peor "una idea completa".
+
+**Mejora:** implementar un chunking **sintáctico** que use el AST del lenguaje (por ejemplo con `tree-sitter`) para cortar por unidades semánticas —función, clase, método— en lugar de por líneas. Los chunks resultantes serían más coherentes y mejorarían la relevancia de lo que recupera el RAG. Encaja como una **nueva implementación del puerto `CodeChunker`**, sin tocar el resto del flujo de chunks.
+
+### Despliegue y CI/CD
+
+**Estado actual:** el proyecto se ejecuta en local y solo existe un `docker-compose.yml` para levantar PostgreSQL. No hay un despliegue real de la API ni un pipeline de integración continua.
+
+**Mejora:** contenerizar la API con un `Dockerfile`, y desplegarla en un PaaS (Railway, Render, Fly.io…) o con un `docker-compose` completo, usando una base de datos PostgreSQL gestionada y variables de entorno seguras. Además, montar un pipeline de **CI/CD** que ejecute `npm run typecheck` y `npm test` en cada push, de modo que ningún cambio que rompa los tests o el tipado llegue a la rama principal.
 
 
 ___________________________________________

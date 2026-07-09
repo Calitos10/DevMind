@@ -7824,19 +7824,107 @@ Se corrigen todas esas erratas en los comentarios de `src/container/container.ts
 
 ---
 
-## Verificación de la Fase 11 (puntos 11.4 – 11.8)
+## Fase 11.9 — Tests herméticos: generador de embeddings de test
 
-Tras aplicar estos cinco cambios:
+### Problema
+
+El `container` decide en tiempo de arranque qué implementación concreta usar para cada puerto, y en entorno de test ya cambiaba dos de ellas: el `AnswerGenerator` (por `TestAnswerGenerator`) y el `ProjectIndexingScheduler` (por `NoopProjectIndexingScheduler`). Sin embargo, el `EmbeddingGenerator` **se quedaba fijo** en `GenkitEmbeddingGenerator`, también durante los tests:
+
+```txt
+answerGenerator    → TestAnswerGenerator          (si NODE_ENV === "test")
+scheduler          → NoopProjectIndexingScheduler (en test)
+embeddingGenerator → new GenkitEmbeddingGenerator()  ← SIEMPRE, también en test
+```
+
+Como los tests de integración de `/projects/:id/index` y `/projects/:id/ask` generan embeddings, cada ejecución de la suite hacía **llamadas reales a la API de Gemini**. Esto tenía varios problemas serios:
+
+```txt
+- La suite dependía de la red, de la API key y de la cuota de Gemini.
+- Podía fallar justo cuando Gemini devuelve un 503 (como pasó en pruebas reales),
+  aunque el código fuera correcto.
+- Era más lenta, no reproducible offline y consumía cuota en cada `npm test`.
+```
+
+Un test de integración debe ser determinista y no depender de un tercero externo.
+
+### Cambio realizado
+
+Se añade un generador de embeddings de test y se inyecta en el `container` con el mismo patrón que ya se usaba para el `AnswerGenerator`:
+
+```txt
+1. src/infrastructure/genkit/testing/testEmbeddingGenerator.ts
+   - TestEmbeddingGenerator implementa EmbeddingGenerator.
+   - Devuelve siempre el mismo vector determinista, de dimensión 768
+     (la misma que la columna vector(768); si fuera otra, el INSERT fallaría).
+
+2. container.ts
+   embeddingGenerator = NODE_ENV === "test"
+       ? new TestEmbeddingGenerator()
+       : new GenkitEmbeddingGenerator();
+```
+
+Al devolver siempre el mismo vector, la distancia entre el embedding de la pregunta y el de cualquier chunk es 0 (por debajo del umbral del RAG), de modo que la búsqueda por similitud es estable y los tests que indexan y luego preguntan siguen recuperando sus chunks, pero **sin tocar la red**.
+
+```txt
+✅ Los tests de /index y /ask ya no llaman a Gemini
+✅ Suite determinista, offline y sin consumo de cuota
+✅ Mismo patrón de sustitución que answerGenerator y scheduler
+✅ 142/142 tests en verde tras el cambio
+```
+
+---
+
+## Fase 11.10 — Sincronización del OpenAPI con la Fase 11
+
+### Problema
+
+Tras los cambios de la Fase 11, el contrato `docs/openapi.yaml` se había quedado desactualizado en dos puntos:
+
+```txt
+- No documentaba las respuestas 429 (Too Many Requests) de las rutas con
+  rate limit, ni las de auth (ya existentes) ni las nuevas de /ask y /upload.
+- La descripción de /ask no reflejaba el nuevo umbral de relevancia (11.5):
+  el fallback ahora también salta si los chunks no son suficientemente relevantes.
+```
+
+Un detalle a favor: el `400` de pregunta vacía en `/ask` **ya estaba** correctamente documentado en el OpenAPI. El desajuste real estaba en el código (devolvía 404), y se corrigió en la Fase 11.4; así que ahora contrato y código coinciden sin tocar el OpenAPI en ese punto.
+
+### Cambio realizado
+
+```txt
+1. Se añade la respuesta "429" a las cuatro rutas con rate limit:
+   /auth/register, /auth/login, /projects/{id}/upload, /projects/{id}/ask.
+
+2. Se actualiza la descripción de /projects/{id}/ask para explicar que la
+   respuesta de fallback también se devuelve cuando los chunks encontrados
+   no superan el umbral de similitud configurado (RAG_MAX_DISTANCE).
+```
+
+El fichero se validó parseándolo tras el cambio: sigue siendo YAML válido, con sus 12 endpoints y las cuatro rutas con la respuesta 429 declarada.
+
+```txt
+✅ 429 documentado en las 4 rutas con rate limit
+✅ Descripción de /ask actualizada con el umbral del RAG
+✅ openapi.yaml validado (parseo correcto)
+```
+
+---
+
+## Verificación de la Fase 11 (puntos 11.4 – 11.10)
+
+Tras aplicar todos los cambios:
 
 ```txt
 npm run typecheck  → sin errores
-npm test           → 142/142 tests en verde (36 archivos)
+npm test           → 142/142 tests en verde (36 archivos), ahora sin llamadas
+                     reales a Gemini (embeddings faked en entorno de test)
 smoke test         → la app carga con helmet, CORS por entorno y los
                      rate limits sin errores de arranque
+openapi.yaml       → YAML válido tras la sincronización
 ```
 
 ---
 
 ## Estado tras la Fase 11
 
-Esta fase no cambia el comportamiento funcional de la API de cara al usuario. Es una fase de consolidación y endurecimiento: mismo comportamiento, con código más seguro (JWT, cabeceras helmet, rate limit en rutas caras), configuración más realista y flexible (límite de ZIP, CORS y umbral de RAG por entorno), respuestas HTTP más correctas (400 en pregunta vacía), un RAG que ya no responde cuando no tiene contexto relevante, y una base de tests y comentarios más mantenible y consistente.
+Esta fase no cambia el comportamiento funcional de la API de cara al usuario. Es una fase de consolidación y endurecimiento: mismo comportamiento, con código más seguro (JWT, cabeceras helmet, rate limit en rutas caras), configuración más realista y flexible (límite de ZIP, CORS y umbral de RAG por entorno), respuestas HTTP más correctas (400 en pregunta vacía), un RAG que ya no responde cuando no tiene contexto relevante, una suite de tests hermética (sin dependencias de red) y un contrato OpenAPI sincronizado con la implementación real.

@@ -301,6 +301,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "429":
+          description: Demasiadas peticiones (límite de rate limit de autenticación por IP superado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /auth/login:
     post:
@@ -346,6 +352,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Demasiadas peticiones (límite de rate limit de autenticación por IP superado)
           content:
             application/json:
               schema:
@@ -576,6 +588,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "429":
+          description: Demasiadas peticiones (límite de rate limit de subida por usuario autenticado superado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /projects/{id}/index:
     post:
@@ -673,7 +691,10 @@ paths:
         indexación en segundo plano tras la subida del ZIP aún no ha terminado)
         no habrá chunks relevantes que encontrar; en ese caso se devuelve una
         respuesta de fallback y una lista de fuentes vacía en lugar de llamar
-        al generador de respuestas. Se recomienda comprobar
+        al generador de respuestas. Esa misma respuesta de fallback se devuelve
+        cuando los chunks encontrados no superan el umbral de similitud
+        configurado (RAG_MAX_DISTANCE): así se evita responder con contexto que
+        en realidad no es relevante para la pregunta. Se recomienda comprobar
         `GET /projects/{id}/indexing-status` antes de preguntar.
       security:
         - bearerAuth: []
@@ -718,6 +739,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Proyecto no encontrado o no pertenece al usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Demasiadas peticiones (límite de rate limit de preguntas por usuario autenticado superado)
           content:
             application/json:
               schema:
