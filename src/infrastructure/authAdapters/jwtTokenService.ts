@@ -7,6 +7,7 @@ export class JwtTokenService implements TokenService {
   async sign(payload: TokenPayload): Promise<string> {
     const options: SignOptions = {
       expiresIn: env.jwt.expiresIn as SignOptions["expiresIn"],
+      algorithm: "HS256",
     };
 
     return jwt.sign(payload, env.jwt.secret, options);
@@ -14,7 +15,9 @@ export class JwtTokenService implements TokenService {
 
   async verify(token: string): Promise<TokenPayload> {
     try {
-      const decoded = jwt.verify(token, env.jwt.secret);
+      const decoded = jwt.verify(token, env.jwt.secret, {
+        algorithms: ["HS256"],
+      });
 
       if (typeof decoded === "string") {
         throw new UnauthorizedError();

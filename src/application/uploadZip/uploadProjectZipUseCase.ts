@@ -30,6 +30,7 @@ export class UploadProjectZipUseCase {
   ) {}
 
   async execute(input: UploadProjectZipUseCaseInput) {
+    //Comprueba si el proyecto existe y es del usuario que lo ejecuta
     const project = await this.projectRepository.findByIdAndOwnerId(
       input.projectId,
       input.ownerId,
@@ -38,6 +39,9 @@ export class UploadProjectZipUseCase {
     if (!project) {
       throw new ProjectNotFoundError();
     }
+    //--------------------------------------------------------
+
+    //Extrae los archivos udel buffer usando el zipExtractor y valida si los archos estraidos son validos
 
     const extractedFiles = await this.zipExtractor.extract(input.zipBuffer);
 
@@ -51,6 +55,12 @@ export class UploadProjectZipUseCase {
       throw new NoValidProjectFilesFoundError();
     }
 
+    //--------------------------------------------------------
+
+    //PARTE DE SINCRONIZACIÓN MEDIANTE PATH Y HASH PARA ACTUALIZAR LOS PROYECTOS SI SE VUELVEN A SUBIR ZIPS ACTUALIZADOS
+
+    //Busca los archivos existentes del proyecto y los ordena por path
+
     const existingProjectFiles =
       await this.projectFileRepository.findByProjectId(input.projectId);
 
@@ -60,12 +70,19 @@ export class UploadProjectZipUseCase {
         projectFile,
       ]),
     );
+     //--------------------------------------------------------
 
+
+    //Inicializa los arrays
     const createdFiles = [];
     const updatedFiles = [];
     const deletedFiles = [];
     const unchangedFiles = [];
+   //--------------------------------------------------------
 
+   //Este for es el que va recorriendo todos los archivos que se han quedado una vez pasada la validacion de archivos
+   //  y va realizando la sincronizacion mediante path y hash creando,eliminando o actualizando los archivos 
+   // y añadiendo cada archivo al array corresponiente.
     for (const extractedFile of validFiles) {
       const hash = createHash("sha256")
         .update(extractedFile.content)
@@ -118,6 +135,11 @@ export class UploadProjectZipUseCase {
 
       createdFiles.push(savedProjectFile);
     }
+    //--------------------------------------------------------Salimos del for
+
+    //Este es el proceso en el cual, se sacan a un set todos los path de los nuevos archivos extraidos 
+    // y con el for se hace que por cada archivo que existia en el repositorio , si en el set no esta el path de ese archvio 
+    // se elimina del repositorio.
 
     const incomingFilePaths = new Set(
       validFiles.map((extractedFile) => extractedFile.path),
@@ -133,11 +155,19 @@ export class UploadProjectZipUseCase {
         deletedFiles.push(existingProjectFile);
       }
     }
+    //--------------------------------------------------------
 
+    //PROCESO EN EL QUE SE REALIZA LA INDEXACION DE EMBEDDIGN ASINCRONA
+
+    //En esta primera parte se crea una constante oara decidir si merece la pena indexar. 
+    // Si en esta subida de ZIP no hubo ningún archivo creado, actualizado ni borrado (todo era unchanged), 
+    // no tiene sentido lanzar una indexación. Solo si hasIndexingRelevantChanges es true se llama a schedule(...).
+    // 
     const hasIndexingRelevantChanges =
       createdFiles.length > 0 ||
       updatedFiles.length > 0 ||
       deletedFiles.length > 0;
+    
 
     if (hasIndexingRelevantChanges) {
       this.projectIndexingScheduler.schedule({
@@ -145,6 +175,10 @@ export class UploadProjectZipUseCase {
         ownerId: input.ownerId,
       });
     }
+
+    //--------------------------------------------------------
+
+    
 
     return {
       projectId: input.projectId,
@@ -163,6 +197,8 @@ export class UploadProjectZipUseCase {
     };
   }
 }
+
+//Funciones helpers:
 
 function detectLanguageFromPath(path: string): string {
   if (path.endsWith(".ts")) return "typescript";

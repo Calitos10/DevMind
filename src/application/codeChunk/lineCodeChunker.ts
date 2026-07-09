@@ -17,7 +17,7 @@ export class LineCodeChunker {
       throw new Error("overlapLines must be lower than maxLinesPerChunk");
     }
 
-    if (input.content.length === 0) {
+    if (input.content.trim().length === 0) {
       return [];
     }
 

@@ -1,3 +1,5 @@
+//Fichero que construye el ruter que route.ts usa para la parte de proyectos
+//Crea el controlador apartir del fichero controlador pasandole mediante el container las dependencias que neceista
 import { Router } from "express";
 
 import { ProjectController } from "./projectController";
@@ -55,17 +57,17 @@ projectRoutes.get(
   asyncHandler((req, res) => projectController.getIndexingStatus(req, res)),
 );
 
-projectRoutes.get(
-  "/",
-  authMiddleware,
-  asyncHandler((req, res) => projectController.list(req, res)),
-);
-
 projectRoutes.post(
   "/:id/ask",
   authMiddleware,
   validateBody(askProjectQuestionSchema),
   asyncHandler((req, res) => projectController.ask(req, res)),
+);
+
+projectRoutes.get(
+  "/",
+  authMiddleware,
+  asyncHandler((req, res) => projectController.list(req, res)),
 );
 
 projectRoutes.get(

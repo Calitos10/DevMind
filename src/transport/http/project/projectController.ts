@@ -1,3 +1,5 @@
+//Fichero del controlador de project, este fichero contiene los metodos encargados
+//  de conectar las peticiones con los casos de uso y devolver la respuesta
 import type { Request, Response } from "express";
 
 import type { AuthenticatedRequest } from "../types/authenticatedRequest";

@@ -1,3 +1,5 @@
+//Fichero que crea el router que usara app.ts para los endpoint
+//Este fichero importa y utiliza a su vez otros subrutes par los endpoints especificos de cada campo
 import { Router } from "express";
 import { authRoutes } from "./auth/authRoutes";
 import { projectRoutes } from "./project/projectRoutes";

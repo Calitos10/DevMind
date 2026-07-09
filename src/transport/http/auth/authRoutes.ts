@@ -1,3 +1,5 @@
+//Fichero que construye el ruter que usa route.ts para la parte de auth
+//Contruye el controlador y en cada endpoint despues de verificarlo, se lo pasa al metodo del controlador que convenga
 import { Router } from "express";
 import { container } from "../../../container/container";
 import { asyncHandler } from "../middleware/asyncHandler";

@@ -54,10 +54,14 @@ import { LineCodeChunker } from "../application/codeChunk/lineCodeChunker";
 import { GenerateCodeChunksForProjectFileUseCase } from "../application/codeChunk/generateCodeChunksForProjectFileUseCase";
 
 
+
+
 //[IMPORTS PARA LA PARTE DE GENERAR EMDEDDING]
 import { PostgresCodeChunkEmbeddingRepository } from "../infrastructure/repositoryAdapter/postgres/postgresCodeChunkEmbeddingRepository";
 import { GenkitEmbeddingGenerator } from "../infrastructure/genkit/genkitEmbeddingGenerator";
 import { GenerateEmbeddingForCodeChunkUseCase } from "../application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
+
+
 
 
 //IMPORT DEL CASO DE USO QUE USA LA GENERACION DE EMBEDDINGS 
@@ -70,11 +74,16 @@ import { AsyncProjectIndexingScheduler } from "../infrastructure/indexingAdapter
 import { NoopProjectIndexingScheduler } from "../infrastructure/indexingAdapter/noopProjectIndexingScheduler";
 
 
+
+
 //IMPORTS PARA LA PARTE DE LAS PREGUNTAS
 import type { AnswerGenerator } from "../application/ports/answerGenerator";
 import { AskProjectQuestionUseCase } from "../application/projectQuestions/askProjectQuestionUseCase";
 import { GenkitAnswerGenerator } from "../infrastructure/genkit/genkitAnswerGenerator";
 import { TestAnswerGenerator } from "../infrastructure/genkit/testing/testAnswerGenerator";
+
+
+
 
 //[INSTANCIAMOS LOS REPOSITORIOS]
 
@@ -89,6 +98,8 @@ const projectRepository = new PostgresProjectRepository(postgresPool);
 const projectFileRepository = new PostgresProjectFileRepository(postgresPool);
 const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
 const projectIndexingJobRepository = new PostgresProjectIndexingJobRepository(postgresPool);
+const codeChunkEmbeddingRepository = new PostgresCodeChunkEmbeddingRepository(postgresPool);
+
 
 
 
@@ -99,27 +110,11 @@ const idGenerator = new CryptoIdGenerator();
 const fileHashGenerator = new CryptoFileHashGenerator();
 const zipExtractor = new AdmZipExtractor();
 const codeChunker = new LineCodeChunker();
+const embeddingGenerator = new GenkitEmbeddingGenerator();
 const delay = new TimeoutDelay();
 
 
-//Monto las dependencias de los embedding
-const codeChunkEmbeddingRepository =
-  new PostgresCodeChunkEmbeddingRepository(postgresPool);
 
-const embeddingGenerator = new GenkitEmbeddingGenerator();
-
-const generateEmbeddingForCodeChunkUseCase =
-  new GenerateEmbeddingForCodeChunkUseCase(
-    codeChunkEmbeddingRepository,
-    embeddingGenerator,
-    idGenerator,
-  );
-
-//Monto el generador de las preguntas
-const answerGenerator: AnswerGenerator =
-  process.env.NODE_ENV === "test"
-    ? new TestAnswerGenerator()
-    : new GenkitAnswerGenerator();
 
 
 //Monto las dependencias de los chunk
@@ -131,6 +126,19 @@ const generateCodeChunksForProjectFileUseCase =
     
   );
 
+
+//Monto las dependencias de los embedding
+
+const generateEmbeddingForCodeChunkUseCase =
+  new GenerateEmbeddingForCodeChunkUseCase(
+    codeChunkEmbeddingRepository,
+    embeddingGenerator,
+    idGenerator,
+  );
+
+
+
+  //Monto las dependencias del indexador
   const indexProjectEmbeddingsUseCase = new IndexProjectEmbeddingsUseCase(
   projectRepository,
   codeChunkRepository,
@@ -148,8 +156,20 @@ const projectIndexingScheduler = isTestEnvironment
   ? new NoopProjectIndexingScheduler()
   : new AsyncProjectIndexingScheduler(indexProjectEmbeddingsUseCase);
 
+
+
+
+
+//Monto el generador de las preguntas
+const answerGenerator: AnswerGenerator =
+  process.env.NODE_ENV === "test"
+    ? new TestAnswerGenerator()
+    : new GenkitAnswerGenerator();
+
+
+
+
 export const container = {
-  userRepository,
 
   registerUserUseCase: new RegisterUserUseCase(
     userRepository,

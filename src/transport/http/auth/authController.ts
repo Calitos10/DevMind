@@ -1,3 +1,5 @@
+//Fichero del controlador de auth, este fichero contiene los metodos encargados
+//  de conectar las peticiones con los casos de uso y devolver la respuesta
 import { Request, Response } from "express";
 import { GetCurrentUserUseCase } from "../../../application/auth/getCurrentUserUseCase";
 import { LoginUserUseCase } from "../../../application/auth/loginUserUseCase";
