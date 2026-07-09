@@ -1103,7 +1103,101 @@ Esto tiene tres consecuencias:
 
 La mejora natural sería que `IndexProjectEmbeddingsUseCase` solo procesase los chunks pertenecientes a los `ProjectFile` marcados como `created`/`updated` en esa subida (esa información ya la calcula `UploadProjectZipUseCase`), o que `GenerateEmbeddingForCodeChunkUseCase` comprobara si el chunk ya tiene un embedding vigente antes de volver a llamar a Gemini.
 
+### Faltan índices en las claves foráneas de la base de datos
+
+En PostgreSQL, declarar una `FOREIGN KEY` **no** crea automáticamente un índice sobre esa columna (solo se indexan solas las `PRIMARY KEY` y las columnas `UNIQUE`). En las migraciones actuales, las tablas `project_files` y `code_chunks` no tienen un índice explícito sobre sus claves foráneas:
+
+- `project_files(project_id)`
+- `code_chunks(project_id)`
+- `code_chunks(project_file_id)`
+
+Justo sobre esas columnas se apoyan las consultas más frecuentes del sistema: `findByProjectId`, `deleteByProjectFileId` y el `JOIN` de la búsqueda semántica del RAG. Sin índice, PostgreSQL recorre la tabla entera (*seq scan*) en cada consulta, y ese coste crece linealmente con el tamaño total de la base de datos.
+
+**Por qué se ha dejado como limitación consciente y no se ha implementado:** el uso previsto de DevMind en el contexto de este TFM es muy pequeño (del orden de 3 usuarios y 2 proyectos por usuario). Con ese volumen, la diferencia entre un *seq scan* y una búsqueda por índice es imperceptible, y añadir los índices no aportaría ninguna mejora observable. Se documenta aquí de forma explícita para dejar claro que es una decisión tomada con conocimiento del *trade-off*, no un descuido.
+
+La mejora natural, si el proyecto creciera a un volumen real de datos, sería añadir una migración con `CREATE INDEX` sobre esas tres columnas. Cabe destacar que en la tabla de embeddings (`code_chunk_embeddings`) sí se crearon índices manualmente, por lo que el patrón ya está aplicado donde el rendimiento importaba desde el principio.
+
 ## 14. Mejoras futuras
+
+### Reintentos con backoff ante fallos transitorios del proveedor de embeddings
+
+#### El problema
+
+La generación de embeddings depende de un servicio externo (Gemini vía Genkit). Como todo servicio externo, ese proveedor puede fallar de forma **puntual y transitoria**: un `503 Service Unavailable` (servicio momentáneamente saturado o caído unos segundos) o un `429 Resource Exhausted` (se ha superado el límite de peticiones por minuto). Estos fallos no significan que la petición esté mal, sino que "ahora mismo no puedo, inténtalo de nuevo en un momento".
+
+Actualmente, `IndexProjectEmbeddingsUseCase` tiene el bloque `try/catch` envolviendo **todo el bucle** que recorre los chunks. Esto tiene una consecuencia dura: en cuanto **un solo chunk** falla al generar su embedding, se lanza una excepción que aborta la indexación entera. El job se marca como `failed`, y todo el progreso anterior de esa ejecución se pierde. No hay ningún intento de reintentar el chunk que ha fallado antes de rendirse.
+
+#### Qué me pasó realmente (caso que motivó esta mejora)
+
+Al subir un proyecto real, la indexación en segundo plano arrancó correctamente y empezó a generar embeddings. En el chunk número 82 de un total de 397, Gemini devolvió:
+
+```txt
+GenkitError: UNAVAILABLE: Error fetching from
+https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent:
+[503 Service Unavailable] The service is currently unavailable.
+```
+
+Fue un fallo transitorio: el endpoint de embeddings de Gemini estaba caído durante unos instantes. Pero como no hay reintentos, ese único 503 **tumbó la indexación completa**: el estado quedó en `failed · progreso 21% · procesados 82 · fallidos 1`. Para continuar, tuve que relanzar la indexación manualmente con `POST /projects/:id/index`, lo que **volvió a empezar desde 0** los 397 chunks (relacionado con la limitación de "indexación no incremental" del apartado 13).
+
+Lo frustrante es que, si hubiera reintentado ese chunk una o dos veces esperando un poco, lo más probable es que el segundo intento hubiera funcionado y no se habría perdido nada.
+
+#### Cómo se soluciona: reintentos con backoff exponencial
+
+La técnica estándar para fallos transitorios de un servicio externo es **reintentar la operación esperando cada vez un poco más** antes de rendirse. A esa espera creciente se le llama *exponential backoff*:
+
+```txt
+Intento 1 → falla 503 → espera ~1s
+Intento 2 → falla 503 → espera ~2s
+Intento 3 → falla 503 → espera ~4s
+Intento 4 → sigue fallando → ahora sí, se da por fallido
+```
+
+La espera creciente es importante: si el proveedor está saturado, machacarlo con reintentos inmediatos solo empeora la situación; darle un margen cada vez mayor le da tiempo a recuperarse. Y solo se considera un fallo definitivo cuando el servicio está realmente caído (no un simple parpadeo).
+
+Un matiz clave: **no todos los errores deben reintentarse**. Solo tiene sentido reintentar los **transitorios** (`503 UNAVAILABLE`, `429 RESOURCE_EXHAUSTED`). Un error "de verdad" —por ejemplo una API key inválida (`401`) o una petición malformada (`400`)— no se va a arreglar reintentando, así que debe fallar de inmediato sin gastar reintentos.
+
+#### Cómo se implementaría en el proyecto
+
+Respetando la arquitectura hexagonal, el reintento vive en la **capa de infraestructura** (es un detalle de cómo se habla con el proveedor externo), no en los casos de uso:
+
+```txt
+1. Utilidad reutilizable de reintentos
+   - Nuevo helper retryWithBackoff(fn, opciones) en infraestructura.
+   - Recibe una función asíncrona y la ejecuta; si lanza un error transitorio,
+     espera (backoff) y reintenta hasta agotar el número máximo de intentos.
+   - Reutiliza el mismo puerto Delay que ya usa IndexProjectEmbeddingsUseCase
+     para las esperas (así sigue siendo testeable sin esperas reales).
+
+2. Aplicarlo en GenkitEmbeddingGenerator
+   - src/infrastructure/genkit/genkitEmbeddingGenerator.ts envuelve la llamada
+     a ai.embed(...) con retryWithBackoff.
+   - Detecta si el error es transitorio (503/UNAVAILABLE, 429/RESOURCE_EXHAUSTED)
+     mirando el status/code del GenkitError. Si lo es, reintenta; si no, relanza.
+
+3. Configuración por entorno (.env)
+   - EMBEDDING_MAX_RETRIES (p. ej. 3)
+   - EMBEDDING_RETRY_BASE_MS (p. ej. 1000)
+   - Igual que ya se hace con INDEXING_DELAY_BETWEEN_CHUNKS_MS, para poder
+     ajustar el comportamiento sin tocar código.
+
+4. Error tipado como red de seguridad (cuando se agotan los reintentos)
+   - Si tras todos los reintentos el proveedor sigue caído (caída real, no un
+     parpadeo), se lanza un error de dominio tipado, p. ej.
+     EmbeddingProviderUnavailableError (extiende AppError, código 503), con un
+     mensaje claro tipo: "Ha habido un problema con el proveedor de embeddings
+     y la indexación ha fallado. Vuelve a lanzar la indexación manualmente."
+   - Como IndexProjectEmbeddingsUseCase ya guarda error.message en el
+     errorMessage del job, ese texto amigable quedaría reflejado en el estado.
+   - En la ruta manual POST /:id/index, el errorMiddleware ya sabe manejar
+     AppError, así que devolvería un 503 con ese mensaje en vez del 500 genérico.
+
+5. Exponer errorMessage en el estado de indexación
+   - getProjectIndexingStatusUseCase actualmente NO devuelve el campo
+     errorMessage. Añadirlo permitiría que el frontend, cuando el estado es
+     "failed", muestre el motivo y un botón de "Reintentar indexación".
+```
+
+En resumen, esta mejora tiene dos capas complementarias: los **reintentos con backoff** hacen que la mayoría de fallos transitorios (como el 503 que me ocurrió) se resuelvan solos sin perder progreso; y el **error tipado + errorMessage en el estado** cubren el caso en que el proveedor esté caído de verdad, informando al usuario con un mensaje claro en lugar de un fallo mudo. Son cambios independientes entre sí y del resto del sistema, por lo que pueden implementarse por separado.
 
 
 ___________________________________________

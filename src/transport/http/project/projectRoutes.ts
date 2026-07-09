@@ -7,6 +7,10 @@ import { projectSchema, askProjectQuestionSchema } from "./projectSchemas";
 import { authMiddleware } from "../../http/middleware/authMiddleware";
 import { validateBody } from "../../http/middleware/validateBodyMiddleware";
 import { asyncHandler } from "../../http/middleware/asyncHandler";
+import {
+  askRateLimitMiddleware,
+  uploadRateLimitMiddleware,
+} from "../../http/middleware/userRateLimitMiddleware";
 import { container } from "../../../container/container";
 import { env } from "../../../infrastructure/config/env";
 
@@ -42,6 +46,7 @@ projectRoutes.post(
 projectRoutes.post(
   "/:id/upload",
   authMiddleware,
+  uploadRateLimitMiddleware,
   upload.single("file"),
   asyncHandler((req, res) => projectController.uploadZip(req, res)),
 );
@@ -60,6 +65,7 @@ projectRoutes.get(
 projectRoutes.post(
   "/:id/ask",
   authMiddleware,
+  askRateLimitMiddleware,
   validateBody(askProjectQuestionSchema),
   asyncHandler((req, res) => projectController.ask(req, res)),
 );

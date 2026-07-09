@@ -29,6 +29,9 @@ export class AskProjectQuestionUseCase {
     private readonly embeddingGenerator: EmbeddingGenerator,
     private readonly codeChunkEmbeddingRepository: CodeChunkEmbeddingRepository,
     private readonly answerGenerator: AnswerGenerator,
+    // Distancia máxima aceptada para considerar un chunk relevante.
+    // Por defecto no filtra (Infinity); el valor real se inyecta desde el container.
+    private readonly maxDistance: number = Number.POSITIVE_INFINITY,
   ) {}
 
   async execute(
@@ -58,7 +61,15 @@ export class AskProjectQuestionUseCase {
         limit: 5,
       });
 
-    if (contextChunks.length === 0) {
+    // Se descartan los chunks cuya distancia supere el umbral: aunque pgvector
+    // siempre devuelve los "más cercanos", eso no significa que sean relevantes.
+    // Si la pregunta no tiene nada que ver con el proyecto, todos quedan fuera
+    // y se responde que no hay información en lugar de inventar.
+    const relevantChunks = contextChunks.filter(
+      (contextChunk) => contextChunk.distance <= this.maxDistance,
+    );
+
+    if (relevantChunks.length === 0) {
       return {
         answer:
           "No tengo suficiente información del proyecto para responder a esa pregunta.",
@@ -68,10 +79,10 @@ export class AskProjectQuestionUseCase {
 
     const answer = await this.answerGenerator.generateAnswer({
       question: input.question,
-      contextChunks,
+      contextChunks: relevantChunks,
     });
 
-    const sources = this.buildSources(contextChunks);
+    const sources = this.buildSources(relevantChunks);
 
     return {
       answer,

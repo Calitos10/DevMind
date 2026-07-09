@@ -7662,6 +7662,181 @@ Los 2 tests que seguían fallando (`askProjectQuestionUseCase.test.ts`, esperand
 
 ---
 
+## Fase 11.4 — Corrección del código de estado HTTP en pregunta vacía
+
+### Problema
+
+Cuando un usuario hacía una pregunta vacía en `/ask`, DevMind lanzaba el error `QuestionIsRequired`, que heredaba de `AppError` pero pasaba el código de estado `404`. Ese código es incorrecto a nivel semántico: un `404 Not Found` significa "el recurso pedido no existe", mientras que una pregunta vacía es un error del **input** del cliente, que corresponde a un `400 Bad Request`.
+
+Además, era una inconsistencia dentro del propio proyecto: el resto de errores de validación ya devolvían `400` (`ZipFileRequiredError`, `NoValidProjectFilesFoundError`, etc.). Solo este devolvía `404`.
+
+### Cambio realizado
+
+En `src/shared/errors/questionIsRequired.ts` se corrige el código de estado:
+
+```txt
+super("Question is required", 404)  →  super("Question is required", 400)
+```
+
+En la práctica este error salta muy pocas veces por HTTP, porque el schema de Zod (`askProjectQuestionSchema`) ya rechaza las preguntas vacías antes de llegar al caso de uso. Aun así, la comprobación redundante del caso de uso (defensa en profundidad) ahora devuelve el código correcto.
+
+```txt
+✅ Pregunta vacía devuelve 400 (Bad Request), no 404
+✅ Consistente con el resto de errores de validación del proyecto
+```
+
+---
+
+## Fase 11.5 — Umbral de relevancia en el RAG
+
+### Problema
+
+`AskProjectQuestionUseCase` solo devolvía el mensaje "No tengo suficiente información del proyecto..." cuando la búsqueda vectorial devolvía **cero** chunks. Eso únicamente ocurre cuando el proyecto no tiene ningún embedding indexado.
+
+El problema es que, para un proyecto ya indexado, `findSimilarByProjectId` devuelve **siempre** los 5 chunks "más cercanos", aunque la pregunta no tenga nada que ver con el código. Esos chunks irrelevantes entraban igualmente en el prompt de Gemini, con el riesgo de que el modelo generara una respuesta "convincente pero inventada" sobre algo que no está en el proyecto.
+
+Lo llamativo es que la información necesaria para evitarlo ya existía: la consulta de pgvector calcula y devuelve la `distance` de cada chunk (operador `<->`, distancia L2), pero ese dato no se usaba para nada.
+
+### Cambio realizado
+
+Se añade un umbral de distancia configurable y se filtran los chunks recuperados antes de pasarlos al modelo:
+
+```txt
+1. env.ts → nuevo env.rag.maxDistance (variable RAG_MAX_DISTANCE, por defecto 1.0).
+
+2. AskProjectQuestionUseCase → recibe maxDistance por constructor
+   (por defecto Number.POSITIVE_INFINITY, para no acoplar la capa de
+   aplicación a la configuración y no alterar los tests existentes).
+   Tras recuperar los chunks, descarta los que superan el umbral:
+       relevantChunks = contextChunks.filter(c => c.distance <= maxDistance)
+   Si no queda ninguno relevante, devuelve el mismo mensaje de "sin información".
+
+3. container.ts → inyecta env.rag.maxDistance en el caso de uso.
+```
+
+De esta forma, si la pregunta no guarda relación con el proyecto, todos los chunks quedan fuera y DevMind responde honestamente que no tiene información, en lugar de forzar una respuesta.
+
+**Nota sobre calibración:** el valor por defecto (`1.0`) es un punto de partida y debe ajustarse con preguntas reales, ya que la escala de la distancia depende del modelo de embeddings. Como está en `.env` (`RAG_MAX_DISTANCE`), se puede calibrar sin tocar código.
+
+```txt
+✅ Se filtran los chunks por distancia antes de generar la respuesta
+✅ Preguntas fuera de contexto → "no tengo información" en vez de inventar
+✅ Umbral configurable por entorno (RAG_MAX_DISTANCE)
+✅ Sin acoplar la capa de aplicación a la configuración
+```
+
+---
+
+## Fase 11.6 — Cabeceras de seguridad (helmet) y CORS configurable
+
+### Problema
+
+En `src/app.ts` la aplicación solo montaba `cors` y `express.json`, sin ninguna cabecera de seguridad HTTP. Faltaba el estándar mínimo (`X-Content-Type-Options`, `X-Frame-Options`, ocultar `X-Powered-By`, etc.).
+
+Además, el origen permitido por CORS estaba escrito directamente en el código (`http://localhost:5173`), lo que obligaba a editar y recompilar para cambiarlo entre desarrollo y producción.
+
+### Cambio realizado
+
+```txt
+1. Se instala helmet y se monta como primer middleware:
+       app.use(helmet());
+
+2. El origen de CORS pasa a leerse de la configuración:
+       env.cors.origin (variable CORS_ORIGIN, por defecto http://localhost:5173)
+       app.use(cors({ origin: env.cors.origin }));
+
+3. Se añade CORS_ORIGIN a .env y .env.example.
+```
+
+El mismo código sirve ahora en local y en producción cambiando solo la variable de entorno, y todas las respuestas incluyen las cabeceras de seguridad de helmet.
+
+```txt
+✅ helmet añade cabeceras de seguridad en todas las respuestas
+✅ Origen de CORS configurable por entorno (CORS_ORIGIN)
+✅ .env y .env.example actualizados
+```
+
+---
+
+## Fase 11.7 — Rate limit en rutas caras (/ask y /upload)
+
+### Problema
+
+Hasta ahora solo las rutas de autenticación (`/auth/register`, `/auth/login`) tenían rate limit. Las dos rutas más costosas quedaban sin protección:
+
+```txt
+/ask     → cada pregunta genera un embedding y llama a Gemini (coste real €).
+/upload  → cada subida consume CPU/memoria y dispara la indexación en background.
+```
+
+Sin límite, un usuario autenticado (o un script suyo) podía lanzar miles de preguntas en bucle y disparar la factura de la API de Gemini, o martillear la subida de ZIPs.
+
+### Cambio realizado
+
+Se crea un middleware de rate limit reutilizable, pensado para aplicarse **después** de `authMiddleware`, de forma que puede limitar por **usuario autenticado** en lugar de solo por IP:
+
+```txt
+1. src/transport/http/middleware/userRateLimitMiddleware.ts
+   - createUserRateLimitMiddleware({ max, windowMinutes }): factory de rate limit.
+   - keyGenerator: usa req.user.userId; si no hubiera, cae a la IP (ipKeyGenerator).
+   - skip: se desactiva en entorno de test (env.nodeEnv === "test").
+   - Exporta askRateLimitMiddleware y uploadRateLimitMiddleware ya configurados.
+
+2. env.ts → env.askRateLimit (20 / 15 min) y env.uploadRateLimit (10 / 60 min),
+   ambos configurables por .env.
+
+3. projectRoutes.ts → se aplican los middlewares tras authMiddleware:
+       /:id/ask     → askRateLimitMiddleware
+       /:id/upload  → uploadRateLimitMiddleware
+```
+
+Al limitar por `userId` y no solo por IP, el control es más preciso (dos usuarios detrás de la misma IP no se penalizan entre ellos, y un mismo usuario no esquiva el límite cambiando de IP).
+
+```txt
+✅ /ask y /upload protegidos con rate limit
+✅ Límite por usuario autenticado (con fallback a IP)
+✅ Límites configurables por entorno (ASK_/UPLOAD_RATE_LIMIT_*)
+✅ Desactivado en tests para no interferir con la suite
+```
+
+---
+
+## Fase 11.8 — Corrección de typos en comentarios
+
+### Problema
+
+Varios comentarios en español contenían erratas que, aunque no afectan al comportamiento, restan profesionalidad de cara a la revisión del proyecto:
+
+```txt
+container.ts                → "memmoria", "EMDEDDING", "Postgre"
+uploadProjectZipUseCase.ts  → "udel", "archos", "estraidos",
+                              "corresponiente", "archvio" y varias tildes
+```
+
+### Cambio realizado
+
+Se corrigen todas esas erratas en los comentarios de `src/container/container.ts` y `src/application/uploadZip/uploadProjectZipUseCase.ts`. Es un cambio puramente cosmético, sin ninguna modificación de lógica.
+
+```txt
+✅ Comentarios corregidos en container.ts y uploadProjectZipUseCase.ts
+✅ Sin cambios de comportamiento
+```
+
+---
+
+## Verificación de la Fase 11 (puntos 11.4 – 11.8)
+
+Tras aplicar estos cinco cambios:
+
+```txt
+npm run typecheck  → sin errores
+npm test           → 142/142 tests en verde (36 archivos)
+smoke test         → la app carga con helmet, CORS por entorno y los
+                     rate limits sin errores de arranque
+```
+
+---
+
 ## Estado tras la Fase 11
 
-Esta fase no cambia el comportamiento observable de la API. Es una fase de consolidación: mismo comportamiento, código más seguro (JWT), configuración más realista (límite de ZIP) y tests más mantenibles y consistentes (fakes compartidos), sin la deuda de tipado que arrastraba `generateCodeChunksForProjectFileUseCase.test.ts`.
+Esta fase no cambia el comportamiento funcional de la API de cara al usuario. Es una fase de consolidación y endurecimiento: mismo comportamiento, con código más seguro (JWT, cabeceras helmet, rate limit en rutas caras), configuración más realista y flexible (límite de ZIP, CORS y umbral de RAG por entorno), respuestas HTTP más correctas (400 en pregunta vacía), un RAG que ya no responde cuando no tiene contexto relevante, y una base de tests y comentarios más mantenible y consistente.

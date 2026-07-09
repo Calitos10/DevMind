@@ -41,7 +41,7 @@ export class UploadProjectZipUseCase {
     }
     //--------------------------------------------------------
 
-    //Extrae los archivos udel buffer usando el zipExtractor y valida si los archos estraidos son validos
+    //Extrae los archivos del buffer usando el zipExtractor y valida si los archivos extraídos son válidos
 
     const extractedFiles = await this.zipExtractor.extract(input.zipBuffer);
 
@@ -80,9 +80,9 @@ export class UploadProjectZipUseCase {
     const unchangedFiles = [];
    //--------------------------------------------------------
 
-   //Este for es el que va recorriendo todos los archivos que se han quedado una vez pasada la validacion de archivos
-   //  y va realizando la sincronizacion mediante path y hash creando,eliminando o actualizando los archivos 
-   // y añadiendo cada archivo al array corresponiente.
+   //Este for es el que va recorriendo todos los archivos que se han quedado una vez pasada la validación de archivos
+   //  y va realizando la sincronización mediante path y hash creando, eliminando o actualizando los archivos
+   // y añadiendo cada archivo al array correspondiente.
     for (const extractedFile of validFiles) {
       const hash = createHash("sha256")
         .update(extractedFile.content)
@@ -137,8 +137,8 @@ export class UploadProjectZipUseCase {
     }
     //--------------------------------------------------------Salimos del for
 
-    //Este es el proceso en el cual, se sacan a un set todos los path de los nuevos archivos extraidos 
-    // y con el for se hace que por cada archivo que existia en el repositorio , si en el set no esta el path de ese archvio 
+    //Este es el proceso en el cual, se sacan a un set todos los path de los nuevos archivos extraídos
+    // y con el for se hace que por cada archivo que existía en el repositorio, si en el set no está el path de ese archivo
     // se elimina del repositorio.
 
     const incomingFilePaths = new Set(

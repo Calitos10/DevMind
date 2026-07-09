@@ -7,6 +7,9 @@ if (!process.env.JWT_SECRET) {
 export const env = {
   port: process.env.PORT || "3000",
   nodeEnv: process.env.NODE_ENV || "development",
+  cors: {
+    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
+  },
   jwt: {
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
@@ -20,8 +23,26 @@ export const env = {
     max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 10,
     windowMinutes: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MINUTES) || 15,
   },
+  // Límite para /ask: cada pregunta genera un embedding y llama a Gemini,
+  // así que tiene coste real. Se limita por usuario autenticado.
+  askRateLimit: {
+    max: Number(process.env.ASK_RATE_LIMIT_MAX) || 20,
+    windowMinutes: Number(process.env.ASK_RATE_LIMIT_WINDOW_MINUTES) || 15,
+  },
+  // Límite para /upload: subir un ZIP consume CPU/memoria y dispara indexación.
+  uploadRateLimit: {
+    max: Number(process.env.UPLOAD_RATE_LIMIT_MAX) || 10,
+    windowMinutes: Number(process.env.UPLOAD_RATE_LIMIT_WINDOW_MINUTES) || 60,
+  },
   indexing: {
     delayBetweenChunksMs:
       Number(process.env.INDEXING_DELAY_BETWEEN_CHUNKS_MS) || 1000,
+  },
+  rag: {
+    // Distancia máxima (operador <-> de pgvector, L2) que se acepta para
+    // considerar que un chunk es relevante. Los chunks más lejanos que este
+    // umbral se descartan; si no queda ninguno, se responde "sin información".
+    // Es un punto de partida y debe calibrarse con preguntas reales.
+    maxDistance: Number(process.env.RAG_MAX_DISTANCE) || 1.0,
   },
 };

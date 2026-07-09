@@ -5,7 +5,7 @@ import { RegisterUserUseCase } from "../application/auth/registerUserUseCase";
 import { BcryptPasswordHasher } from "../infrastructure/authAdapters/bcryptPasswordHasher";
 import { JwtTokenService } from "../infrastructure/authAdapters/jwtTokenService";
 import { CryptoIdGenerator } from "../infrastructure/authAdapters/cryptoIdGenerator";
-//Imports de Repositorio Postgre
+//Imports de Repositorio Postgres
 import { postgresPool } from "../infrastructure/database/postgresPool";
 import { PostgresUserRepository } from "../infrastructure/repositoryAdapter/postgres/postgresUserRepository";
 //Import de Repositorio en Memoria
@@ -21,7 +21,7 @@ import { GetProjectByIdUseCase } from "../application/projects/getProjectByIdUse
 import { DeleteProjectUseCase } from "../application/projects/deleteProjectUseCase";
 //Import de repositorio en Postgres
 import { PostgresProjectRepository } from "../infrastructure/repositoryAdapter/postgres/postgresProjectRepository";
-//Import de repositorio en memmoria
+//Import de repositorio en memoria
 //import { InMemoryProjectRepository } from "../infrastructure/repositoryAdapter/inMemory/inMemoryProjectRepository";
 
 
@@ -56,7 +56,7 @@ import { GenerateCodeChunksForProjectFileUseCase } from "../application/codeChun
 
 
 
-//[IMPORTS PARA LA PARTE DE GENERAR EMDEDDING]
+//[IMPORTS PARA LA PARTE DE GENERAR EMBEDDING]
 import { PostgresCodeChunkEmbeddingRepository } from "../infrastructure/repositoryAdapter/postgres/postgresCodeChunkEmbeddingRepository";
 import { GenkitEmbeddingGenerator } from "../infrastructure/genkit/genkitEmbeddingGenerator";
 import { GenerateEmbeddingForCodeChunkUseCase } from "../application/codeChunkEmbeddings/generateEmbeddingForCodeChunkUseCase";
@@ -238,6 +238,7 @@ getProjectIndexingStatusUseCase : new GetProjectIndexingStatusUseCase(
   embeddingGenerator,
   codeChunkEmbeddingRepository,
   answerGenerator,
+  env.rag.maxDistance,
 ),
 
   tokenService,
