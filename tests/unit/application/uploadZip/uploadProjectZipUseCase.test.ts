@@ -37,17 +37,6 @@ class FakeGenerateCodeChunksForProjectFileUseCase {
   }
 }
 
-class FakeProjectIndexingScheduler {
-  public scheduledProjects: Array<{
-    projectId: string;
-    ownerId: string;
-  }> = [];
-
-  schedule(input: { projectId: string; ownerId: string }): void {
-    this.scheduledProjects.push(input);
-  }
-}
-
 function calculateHash(content: string): string {
   return createHash("sha256").update(content).digest("hex");
 }
@@ -58,14 +47,10 @@ function createUploadProjectZipUseCase(input: {
   zipExtractor: FakeZipExtractor;
   idGenerator: FakeSequentialIdGenerator;
   generateCodeChunksForProjectFileUseCase?: FakeGenerateCodeChunksForProjectFileUseCase;
-  projectIndexingScheduler?: FakeProjectIndexingScheduler;
 }) {
   const generateCodeChunksForProjectFileUseCase =
     input.generateCodeChunksForProjectFileUseCase ??
     new FakeGenerateCodeChunksForProjectFileUseCase();
-
-  const projectIndexingScheduler =
-    input.projectIndexingScheduler ?? new FakeProjectIndexingScheduler();
 
   const useCase = new UploadProjectZipUseCase(
     input.projectRepository,
@@ -73,13 +58,11 @@ function createUploadProjectZipUseCase(input: {
     input.zipExtractor,
     input.idGenerator,
     generateCodeChunksForProjectFileUseCase,
-    projectIndexingScheduler,
   );
 
   return {
     useCase,
     generateCodeChunksForProjectFileUseCase,
-    projectIndexingScheduler,
   };
 }
 
@@ -208,50 +191,6 @@ describe("UploadProjectZipUseCase", () => {
     expect(
       generateCodeChunksForProjectFileUseCase.generatedProjectFilePaths,
     ).toEqual(["src/index.ts", "package.json"]);
-  });
-
-  it("schedules project indexing after uploading project files", async () => {
-    const projectRepository = new FakeProjectRepository();
-    const projectFileRepository = new FakeProjectFileRepository();
-
-    await projectRepository.save({
-      id: "project-1",
-      ownerId: "user-1",
-      name: "My project",
-      description: "Test project",
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    });
-
-    const zipExtractor = new FakeZipExtractor([
-      {
-        path: "src/index.ts",
-        content: "console.log('hello');",
-      },
-    ]);
-
-    const idGenerator = new FakeSequentialIdGenerator(["file-1"]);
-    const projectIndexingScheduler = new FakeProjectIndexingScheduler();
-
-    const { useCase } = createUploadProjectZipUseCase({
-      projectRepository,
-      projectFileRepository,
-      zipExtractor,
-      idGenerator,
-      projectIndexingScheduler,
-    });
-
-    await useCase.execute({
-      projectId: "project-1",
-      ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
-    });
-
-    expect(projectIndexingScheduler.scheduledProjects).toEqual([
-      {
-        projectId: "project-1",
-        ownerId: "user-1",
-      },
-    ]);
   });
 
   it("does not upload files when the project does not belong to the user", async () => {

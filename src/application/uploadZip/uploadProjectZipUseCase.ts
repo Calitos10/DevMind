@@ -7,7 +7,6 @@ import { IdGenerator } from "../../application/ports/idGeneratorPort";
 import { ZipExtractor } from "../../application/ports/zipExtractor";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { NoValidProjectFilesFoundError } from "../../shared/errors/noValidProjectFilesFoundError";
-import { ProjectIndexingScheduler } from "../../application/ports/projectIndexingScheduler";
 
 type UploadProjectZipUseCaseInput = {
   projectId: string;
@@ -26,7 +25,6 @@ export class UploadProjectZipUseCase {
     private readonly zipExtractor: ZipExtractor,
     private readonly idGenerator: IdGenerator,
     private readonly generateCodeChunksForProjectFileUseCase: GenerateCodeChunksForProjectFileUseCase,
-    private readonly projectIndexingScheduler: ProjectIndexingScheduler,
   ) {}
 
   async execute(input: UploadProjectZipUseCaseInput) {
@@ -157,28 +155,10 @@ export class UploadProjectZipUseCase {
     }
     //--------------------------------------------------------
 
-    //PROCESO EN EL QUE SE REALIZA LA INDEXACION DE EMBEDDIGN ASINCRONA
-
-    //En esta primera parte se crea una constante oara decidir si merece la pena indexar. 
-    // Si en esta subida de ZIP no hubo ningún archivo creado, actualizado ni borrado (todo era unchanged), 
-    // no tiene sentido lanzar una indexación. Solo si hasIndexingRelevantChanges es true se llama a schedule(...).
-    // 
-    const hasIndexingRelevantChanges =
-      createdFiles.length > 0 ||
-      updatedFiles.length > 0 ||
-      deletedFiles.length > 0;
-    
-
-    if (hasIndexingRelevantChanges) {
-      this.projectIndexingScheduler.schedule({
-        projectId: input.projectId,
-        ownerId: input.ownerId,
-      });
-    }
-
-    //--------------------------------------------------------
-
-    
+    //La generación de embeddings (indexación) ya NO se lanza automáticamente aquí.
+    //Tras subir el ZIP, DevMind responde con el resumen de cambios y es el usuario
+    //quien decide cuándo indexar, de forma explícita, con POST /projects/:id/index.
+    //Ver Fase 11 del documento de diseño para el motivo de este cambio.
 
     return {
       projectId: input.projectId,

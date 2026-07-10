@@ -534,12 +534,10 @@ paths:
         deja intactos los que no cambiaron (unchanged) y borra los archivos
         existentes cuya ruta ya no está presente en el ZIP.
         Los archivos creados o actualizados se trocean en fragmentos de código
-        (code chunks) de forma síncrona. Si hubo archivos creados, actualizados
-        o eliminados, además se programa en segundo plano (sin bloquear la
-        respuesta) la generación/regeneración de embeddings del proyecto;
-        el progreso de ese proceso se puede consultar con
-        `GET /projects/{id}/indexing-status` o forzar de forma síncrona con
-        `POST /projects/{id}/index`.
+        (code chunks) de forma síncrona. La generación de embeddings (indexación)
+        NO se dispara automáticamente: tras la subida, el usuario debe lanzarla
+        de forma explícita con `POST /projects/{id}/index`, y puede consultar su
+        progreso con `GET /projects/{id}/indexing-status`.
         Devuelve 400 si no se adjunta archivo o si el ZIP no contiene archivos válidos.
       security:
         - bearerAuth: []
@@ -605,10 +603,9 @@ paths:
         embedding vectorial de forma síncrona, guardando el progreso en un
         job de indexación (`project_indexing_jobs`). La llamada no devuelve
         la respuesta hasta que termina de procesar todos los chunks (o falla).
-        Este mismo proceso se dispara automáticamente en segundo plano tras
-        `POST /projects/{id}/upload` cuando hay archivos creados, actualizados
-        o eliminados; este endpoint permite forzarlo manualmente y esperar
-        su resultado.
+        La indexación es una acción explícita del usuario: no se dispara sola
+        tras subir el ZIP, sino que se invoca con este endpoint. Al ser síncrono,
+        si el proveedor de embeddings falla, el error se devuelve en la respuesta.
       security:
         - bearerAuth: []
       parameters:

@@ -5512,7 +5512,7 @@ DevMind ya puede:
 
 Con esto queda cerrada la primera versión funcional del flujo IA/RAG de DevMind.
 
-## FASE 9.4 — Filtrado de archivos binarios en la subida de ZIP
+# FASE 9.4 — Filtrado de archivos binarios en la subida de ZIP
 
 ### Contexto
 
@@ -5714,7 +5714,7 @@ Queda implementado:
 
 ---
 
-## FASE 9.5 — Detección del problema de cuota/límite al generar embeddings
+# FASE 9.5 — Detección del problema de cuota/límite al generar embeddings
 
 ### Contexto
 
@@ -7910,16 +7910,98 @@ El fichero se validó parseándolo tras el cambio: sigue siendo YAML válido, co
 
 ---
 
-## Verificación de la Fase 11 (puntos 11.4 – 11.10)
+## Fase 11.11 — Indexación explícita: se elimina el scheduler automático de la subida del ZIP
+
+En la **Fase 10** se introdujo un *worker* de indexación (el puerto `ProjectIndexingScheduler` con su adaptador `AsyncProjectIndexingScheduler`) para que, tras subir un ZIP, la generación de embeddings se lanzara **automáticamente en segundo plano** y la subida pudiera responder rápido. Esta subfase revisa esa decisión y da marcha atrás de forma consciente.
+
+### El problema que vi
+
+Probando la API con un proyecto real, la indexación automática en segundo plano **falló**: Gemini devolvió un `503 Service Unavailable` transitorio al generar el embedding de un chunk (el 82 de 397). Como esa indexación se lanzaba con un patrón *fire-and-forget* (`void useCase.execute().catch(console.error)`), el error solo se escribía en la consola del servidor. Al usuario ya se le había respondido `201` al subir el ZIP, así que **nunca se enteró del fallo por HTTP**; en la pantalla solo veía el estado `failed` sin explicación.
+
+Al analizarlo, el problema de fondo es más profundo que "Gemini a veces falla":
+
+```txt
+Una tarea que se lanza en segundo plano DESPUÉS de responder la petición HTTP
+no puede comunicar su resultado por esa respuesta, porque la respuesta ya se envió.
+El errorMiddleware solo existe dentro del ciclo de vida de una petición.
+Por tanto, un fallo de la indexación automática es intrínsecamente "mudo" por HTTP.
+```
+
+### Cómo pensé la solución
+
+Comparé los dos caminos posibles:
+
+```txt
+- Mantener la indexación automática (fire-and-forget):
+    [+] la subida responde rápido y no hay timeout
+    [-] pero el fallo no se puede comunicar por HTTP (queda mudo)
+
+- Hacer la indexación una acción EXPLÍCITA y síncrona del usuario:
+    [+] el error vuelve por la respuesta HTTP (el usuario lo ve)
+    [-] a cambio de que esa petición espere a que termine
+```
+
+La clave fue darme cuenta de que **ya existía** el endpoint manual `POST /projects/:id/index` (síncrono, pasa por el `errorMiddleware`) y un botón para lanzarlo. Así que la solución más simple y honesta era **eliminar el disparador automático** y dejar que sea el usuario quien indexe cuando quiera. De ese modo, si Gemini falla, el error se devuelve directamente en la respuesta del botón "Indexar".
+
+El *trade-off* asumido: la indexación síncrona de un proyecto **muy grande** podría dar timeout de conexión (la petición se queda abierta mientras dura). Para la escala de este proyecto no ocurre, y queda documentado como trabajo futuro (cola real). Es el mismo motivo por el que en la Fase 10 se separó la indexación de la subida, pero con una diferencia importante: ahora es una acción donde **el usuario espera conscientemente** (puede verse un *spinner*), no la subida del ZIP quedándose bloqueada.
+
+### Cómo se dejó implementado
+
+Se elimina por completo el *worker* introducido en la Fase 10 y todo lo que colgaba de él:
+
+```txt
+Borrado (código muerto tras el cambio):
+  - src/application/ports/projectIndexingScheduler.ts          (el puerto)
+  - src/infrastructure/indexingAdapter/asyncProjectIndexingScheduler.ts
+  - src/infrastructure/indexingAdapter/noopProjectIndexingScheduler.ts
+  - la carpeta indexingAdapter/ (queda vacía)
+
+Modificado:
+  - UploadProjectZipUseCase: ya no recibe el scheduler ni llama a schedule(...)
+    al final. Solo sincroniza ProjectFiles/CodeChunks y devuelve el resumen.
+  - container.ts: se quitan los imports y la selección Noop/Async, y con ella
+    la variable isTestEnvironment (que solo servía para elegir el scheduler).
+  - tests: se elimina el FakeProjectIndexingScheduler y el test
+    "schedules project indexing after uploading project files".
+```
+
+`IndexProjectEmbeddingsUseCase` **no se toca**: sigue siendo quien genera los embeddings, pero ahora se invoca **solo** desde el endpoint manual `/index`. El flujo queda así:
+
+```txt
+Subida ZIP
+↓
+guarda ProjectFiles + CodeChunks
+↓
+responde con el resumen de cambios   ← ya NO se indexa automáticamente
+↓
+(el usuario revisa y pulsa "Indexar")
+↓
+POST /projects/:id/index  (síncrono)
+↓
+genera embeddings; si Gemini falla, el error vuelve por HTTP (errorMiddleware)
+```
+
+```txt
+✅ Indexación pasa a ser una acción explícita del usuario
+✅ Los fallos de indexación se comunican por HTTP (ya no quedan mudos)
+✅ Arquitectura más simple: desaparece el patrón fire-and-forget y sus riesgos
+✅ IndexProjectEmbeddingsUseCase intacto; solo cambia quién lo invoca
+✅ Trade-off (timeout en proyectos enormes) documentado como trabajo futuro
+```
+
+---
+
+## Verificación de la Fase 11
 
 Tras aplicar todos los cambios:
 
 ```txt
 npm run typecheck  → sin errores
-npm test           → 142/142 tests en verde (36 archivos), ahora sin llamadas
+npm test           → 141/141 tests en verde (36 archivos), ahora sin llamadas
                      reales a Gemini (embeddings faked en entorno de test)
-smoke test         → la app carga con helmet, CORS por entorno y los
-                     rate limits sin errores de arranque
+                     (baja de 142 a 141 al eliminar el test del scheduler)
+smoke test         → la app arranca sin el scheduler, con helmet, CORS por
+                     entorno y los rate limits, sin errores
 openapi.yaml       → YAML válido tras la sincronización
 ```
 
@@ -7927,4 +8009,4 @@ openapi.yaml       → YAML válido tras la sincronización
 
 ## Estado tras la Fase 11
 
-Esta fase no cambia el comportamiento funcional de la API de cara al usuario. Es una fase de consolidación y endurecimiento: mismo comportamiento, con código más seguro (JWT, cabeceras helmet, rate limit en rutas caras), configuración más realista y flexible (límite de ZIP, CORS y umbral de RAG por entorno), respuestas HTTP más correctas (400 en pregunta vacía), un RAG que ya no responde cuando no tiene contexto relevante, una suite de tests hermética (sin dependencias de red) y un contrato OpenAPI sincronizado con la implementación real.
+La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos y OpenAPI sincronizado). La **única excepción con cambio de comportamiento observable** es la Fase 11.11: tras subir un ZIP, DevMind **ya no indexa automáticamente**; la indexación pasa a ser una acción explícita del usuario mediante `POST /projects/:id/index`, lo que además hace que los fallos del proveedor de embeddings se comuniquen por HTTP en lugar de quedar en segundo plano de forma silenciosa. En conjunto, el proyecto queda más seguro, más simple y más honesto en cómo comunica los errores.

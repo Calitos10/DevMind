@@ -1083,7 +1083,127 @@ El embedding de la pregunta solo se usa para recuperar contexto. La respuesta fi
 
 # 11. Tests y TDD
 
+DevMind se ha desarrollado siguiendo **TDD (Test-Driven Development)**. La idea de TDD es escribir primero el test y después el código que lo hace pasar, en un ciclo de tres pasos:
+
+```txt
+1. Red    → escribir un test que falla (todavía no existe la funcionalidad).
+2. Green  → escribir el código mínimo para que ese test pase.
+3. Refactor → limpiar el código manteniendo los tests en verde.
+```
+
+Trabajar así tiene dos ventajas que se notan en el proyecto: el código nace ya pensado para ser testeable (por eso encaja tan bien con la arquitectura hexagonal y los puertos), y cada funcionalidad queda cubierta por un test desde el primer momento, lo que permite refactorizar con red de seguridad.
+
+En total, el proyecto tiene **142 tests repartidos en 36 archivos** (31 de tests unitarios y 5 de integración), todos en verde.
+
+## Tipos de tests
+
+En DevMind se distinguen dos tipos de tests, con propósitos distintos:
+
+- **Tests unitarios**: prueban una pieza aislada (un caso de uso o un adaptador) sin depender de nada externo. Son rápidos y deterministas.
+- **Tests de integración**: prueban el sistema de punta a punta, lanzando peticiones HTTP reales contra la aplicación Express y usando una base de datos PostgreSQL real de test.
+
+## Tests unitarios y uso de fakes
+
+Los tests unitarios de la capa de aplicación (casos de uso) no usan la base de datos ni servicios externos. En su lugar usan **fakes**: implementaciones falsas y en memoria de los puertos del dominio. Esto es posible precisamente porque los casos de uso dependen de interfaces (`ProjectRepository`, `EmbeddingGenerator`, `TokenService`…) y no de implementaciones concretas.
+
+Los fakes viven en `tests/fakes/` y están compartidos entre los distintos tests para evitar duplicación:
+
+```txt
+fakeUserRepository.ts               fakeCodeChunkRepository.ts
+fakeProjectRepository.ts            fakeCodeChunkEmbeddingRepository.ts
+fakeProjectFileRepository.ts        fakeEmbeddingGenerator.ts
+fakePasswordHasher.ts               fakeIdGenerator.ts
+fakeTokenService.ts                 fakeSequentialIdGenerator.ts
+```
+
+Por ejemplo, `LoginUserUseCase` se puede testear con un `FakeUserRepository` (con un usuario en memoria), un `FakePasswordHasher` y un `FakeTokenService`, comprobando toda la lógica de login sin tocar PostgreSQL ni generar un JWT real. La consolidación de estos fakes compartidos se hizo en la Fase 11.3, corrigiendo además un bug de tipado que arrastraba un fake local.
+
+Además de los casos de uso, también hay tests unitarios de los **adaptadores de infraestructura** (bcrypt, JWT, generador de ids, y los repositorios de PostgreSQL), que sí comprueban el comportamiento real de cada tecnología.
+
+## Tests de integración
+
+Los tests de integración usan **Supertest** para lanzar peticiones HTTP reales contra la app (`request(app).post("/auth/login")...`) y una base de datos PostgreSQL de test (`devmind_test_db`). Cubren los flujos completos: autenticación, proyectos, archivos, subida de ZIP, indexación y preguntas (RAG).
+
+La preparación del entorno de test se hace en `tests/globalSetup.ts`, que antes de la suite ejecuta todas las migraciones y limpia las tablas. Un detalle importante de seguridad: ese setup **se niega a truncar la base de datos si no es `devmind_test_db`**, para no borrar por accidente datos de desarrollo.
+
+```txt
+if (!connectionString.includes("devmind_test_db")) {
+  throw new Error("Tests must run against devmind_test_db. Refusing to truncate another database.");
+}
+```
+
+## Dobles de test en el container (tests herméticos)
+
+Un problema que se resolvió en la Fase 11 es que algunos tests de integración (indexación y preguntas) llamaban a la **API real de Gemini**, lo que hacía la suite lenta y dependiente de la red y la cuota. Para evitarlo, el `container` sustituye en entorno de test las implementaciones que hablan con el exterior:
+
+```txt
+answerGenerator    → TestAnswerGenerator          (respuesta fija, sin llamar a Gemini)
+scheduler          → NoopProjectIndexingScheduler (no lanza indexación de fondo)
+embeddingGenerator → TestEmbeddingGenerator        (vector determinista de 768, sin red)
+```
+
+Gracias a esto, toda la suite es **hermética**: se ejecuta sin conexión a Internet, sin consumir cuota de Gemini y con resultados reproducibles.
+
+## Casos de seguridad y casos límite cubiertos
+
+Los tests no solo comprueban el "camino feliz". También verifican explícitamente:
+
+- **Aislamiento entre usuarios**: un usuario que intenta acceder, indexar, subir o preguntar sobre un proyecto de otro recibe un `404` (probado en integración para proyectos, archivos, `/index`, `/indexing-status` y `/ask`).
+- **Autenticación**: las rutas protegidas devuelven `401` sin token.
+- **Validación**: body inválido o pregunta vacía devuelven `400`.
+- **Casos límite del RAG**: proyecto sin indexar todavía devuelve la respuesta de fallback con fuentes vacías.
+
 # 12. Decisiones técnicas importantes
+
+A lo largo del proyecto se han tomado varias decisiones de diseño de forma consciente. Aquí se recogen las más relevantes, con su motivo y la alternativa que se descartó.
+
+## Arquitectura hexagonal (puertos y adaptadores)
+
+La decisión más transversal del proyecto. El dominio y los casos de uso dependen de **interfaces (puertos)**, no de tecnologías concretas, y la infraestructura proporciona los **adaptadores** que las implementan. Se eligió así para mantener la lógica de negocio desacoplada de Express, PostgreSQL, Genkit o JWT, y para poder testear con fakes. La alternativa —meter la lógica directamente en los controladores o en los repositorios— habría sido más rápida de escribir al principio, pero mucho más difícil de testear y de mantener.
+
+## Inyección de dependencias con un container manual
+
+Todas las piezas se ensamblan en un único `container`, que decide qué implementación concreta se inyecta en cada caso de uso. Se optó por un container **hecho a mano** en lugar de un framework de inyección de dependencias (como NestJS o tsyringe) para mantener el proyecto ligero y explícito: se ve de un vistazo qué depende de qué. El mismo container es el que sustituye implementaciones reales por dobles en entorno de test.
+
+## Repositorios intercambiables (InMemory ↔ PostgreSQL)
+
+Cada repositorio tiene una implementación en memoria y otra en PostgreSQL, ambas cumpliendo la misma interfaz del dominio. Esto permitió empezar a desarrollar y testear la lógica sin depender de la base de datos, y cambiar a PostgreSQL después sin tocar los casos de uso. Es la demostración práctica de la ventaja de la arquitectura hexagonal.
+
+## Autenticación stateless con JWT y contraseñas con bcrypt
+
+El login devuelve un **JWT** firmado (HS256, con expiración) que el cliente envía en cada petición protegida. Se eligió un enfoque *stateless* (sin sesiones en servidor) por simplicidad y escalabilidad. Las contraseñas **nunca se guardan en texto plano**: se almacena solo un hash con `bcrypt`. La alternativa de guardar la contraseña directamente se descartó por motivos obvios de seguridad.
+
+## Seguridad por `ownerId` y respuesta 404 en lugar de 403
+
+El `userId` nunca se recibe del cliente: se extrae del JWT ya validado. Y los repositorios no buscan solo por `id`, sino por `id` + `ownerId` (`findByIdAndOwnerId`). Además, cuando un usuario pide un recurso que no le pertenece, se devuelve **404 (no encontrado)** en vez de **403 (prohibido)**. Esto es deliberado: un 403 confirmaría que ese proyecto existe (aunque sea de otro), mientras que el 404 no revela nada. Así se evita filtrar la existencia de recursos ajenos.
+
+## Separar la generación de embeddings de la subida del ZIP
+
+Al principio los embeddings se generaban dentro de la propia petición de subida del ZIP, lo que la bloqueaba durante mucho tiempo en proyectos grandes y podía disparar errores de cuota en Gemini. Se decidió **separar** ambas fases: la subida guarda archivos y chunks y responde rápido, y la generación de embeddings se lanza en segundo plano (indexación asíncrona), con un endpoint para consultar su progreso.
+
+## Sincronización por `path` + `hash` en lugar de borrar y recrear
+
+Cuando se resube un ZIP, DevMind no borra todo y vuelve a empezar. Compara cada archivo por su `path` (para saber si ya existía) y su `hash` (para saber si cambió), y clasifica en creados, actualizados, eliminados y sin cambios. Así solo se regeneran los chunks de lo que realmente ha cambiado, ahorrando trabajo. La alternativa de borrar y recrear todo era más simple pero mucho más costosa.
+
+## pgvector dentro del mismo PostgreSQL
+
+Los embeddings se guardan como vectores en la extensión **pgvector**, en la misma base de datos que el resto de los datos. Se descartó usar una base de datos vectorial dedicada (Pinecone, Weaviate…) para no añadir otra pieza de infraestructura: con pgvector se resuelve la búsqueda por similitud sin salir de PostgreSQL.
+
+## Genkit como capa de abstracción de IA
+
+Toda la comunicación con el modelo de IA (embeddings y generación de respuestas) pasa por **Genkit**, usando Gemini como proveedor. Genkit se envuelve además tras los puertos `EmbeddingGenerator` y `AnswerGenerator`, de modo que el resto del sistema no sabe qué proveedor de IA hay detrás y se podría cambiar sin tocar los casos de uso.
+
+## Subida de ZIP en memoria y filtrado defensivo
+
+El ZIP se recibe con **multer en memoria** (`memoryStorage`), como un `Buffer` que nunca se escribe a disco. Esto, además de ser más simple, evita de raíz ataques de *path traversal* al sistema de archivos. Sobre el contenido se aplican varios filtros: se ignoran carpetas ruidosas (`node_modules`, `.git`, `dist`…), archivos binarios (por extensión y por bytes nulos) y se limita el tamaño comprimido y descomprimido del ZIP para protegerse de *zip bombs*.
+
+## Validación de entrada con Zod
+
+Los datos que llegan por HTTP se validan en la capa de transporte con **Zod** y un middleware (`validateBody`) antes de llegar a los casos de uso. Así la lógica de negocio siempre recibe datos con el formato correcto, y los errores de validación se devuelven de forma uniforme como `400`.
+
+## Umbral de relevancia en el RAG
+
+En la búsqueda semántica no basta con recuperar los chunks "más cercanos": si ninguno es realmente relevante, DevMind responde que no tiene información en lugar de inventar. Para ello se filtra por un **umbral de distancia** configurable (`RAG_MAX_DISTANCE`). Esta decisión prioriza la honestidad de las respuestas sobre responder siempre a toda costa.
 
 # 13. Limitaciones actuales
 
@@ -1128,6 +1248,12 @@ A esto se suma un detalle de tipado: los casos de uso anidados (generación de c
 **Por qué se ha dejado como limitación consciente y no se ha refactorizado:** el caso de uso funciona correctamente y está bien cubierto por tests de integración (subida y sincronización por `path` + `hash`). Un refactor de esta pieza es el cambio con más riesgo de todos los detectados, porque toca lógica central que ya está en producción, y su beneficio es sobre todo de mantenibilidad y limpieza arquitectónica, no de comportamiento. Para el alcance de este TFM se ha priorizado la estabilidad, dejándolo documentado como deuda técnica asumida de forma deliberada.
 
 La mejora natural sería extraer las reglas de dominio a un servicio propio (por ejemplo un `ProjectFileClassifier` / `LanguageDetector`) y, opcionalmente, un `ProjectFilesSynchronizer` para el diff de sincronización, además de definir puertos explícitos para los casos de uso anidados. Así el `UploadProjectZipUseCase` quedaría como un orquestador delgado, más fácil de leer y de testear por partes.
+
+## Chunking basado en AST (sintáctico) en lugar de por líneas
+
+**Estado actual:** `LineCodeChunker` divide el contenido **por número de líneas** (bloques de 80 líneas con 10 de solapamiento), sin tener en cuenta la estructura del código. Esto significa que un chunk puede cortar una función o una clase por la mitad, lo que puede empeorar la calidad de la recuperación semántica: un fragmento partido representa peor "una idea completa".
+
+**Mejora:** implementar un chunking **sintáctico** que use el AST del lenguaje (por ejemplo con `tree-sitter`) para cortar por unidades semánticas —función, clase, método— en lugar de por líneas. Los chunks resultantes serían más coherentes y mejorarían la relevancia de lo que recupera el RAG. Encaja como una **nueva implementación del puerto `CodeChunker`**, sin tocar el resto del flujo de chunks.
 
 # 14. Mejoras futuras
 
@@ -1235,11 +1361,6 @@ En resumen, esta mejora tiene dos capas complementarias: los **reintentos con ba
 
 **Mejora:** introducir un **logger estructurado** (por ejemplo `pino`) con niveles configurables por entorno, sustituir los `console.*` por ese logger, y exponer métricas mediante Prometheus u OpenTelemetry. Con eso se podría, por ejemplo, monitorizar cuántas indexaciones fallan por errores de Gemini o cuánto tarda de media generar un embedding.
 
-### Chunking basado en AST (sintáctico) en lugar de por líneas
-
-**Estado actual:** `LineCodeChunker` divide el contenido **por número de líneas** (bloques de 80 líneas con 10 de solapamiento), sin tener en cuenta la estructura del código. Esto significa que un chunk puede cortar una función o una clase por la mitad, lo que puede empeorar la calidad de la recuperación semántica: un fragmento partido representa peor "una idea completa".
-
-**Mejora:** implementar un chunking **sintáctico** que use el AST del lenguaje (por ejemplo con `tree-sitter`) para cortar por unidades semánticas —función, clase, método— en lugar de por líneas. Los chunks resultantes serían más coherentes y mejorarían la relevancia de lo que recupera el RAG. Encaja como una **nueva implementación del puerto `CodeChunker`**, sin tocar el resto del flujo de chunks.
 
 ### Despliegue y CI/CD
 
@@ -1251,7 +1372,7 @@ En resumen, esta mejora tiene dos capas complementarias: los **reintentos con ba
 ___________________________________________
 
 
-Preguntas generales
+## Preguntas generales
 ¿Qué problema resuelve DevMind?
 ¿Por qué hiciste este proyecto?
 ¿Qué diferencia hay entre DevMind y preguntarle directamente a ChatGPT?

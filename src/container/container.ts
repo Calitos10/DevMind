@@ -72,8 +72,6 @@ import { IndexProjectEmbeddingsUseCase } from "../application/indexing/indexProj
 import { GetProjectIndexingStatusUseCase } from "../application/indexing/getProjectIndexingStatusUseCase";
 import { TimeoutDelay } from "../infrastructure/timeDelayAdapter/timeoutDelay";
 import { env } from "../infrastructure/config/env";
-import { AsyncProjectIndexingScheduler } from "../infrastructure/indexingAdapter/asyncProjectIndexingScheduler";
-import { NoopProjectIndexingScheduler } from "../infrastructure/indexingAdapter/noopProjectIndexingScheduler";
 
 
 
@@ -154,16 +152,6 @@ const generateEmbeddingForCodeChunkUseCase =
   env.indexing.delayBetweenChunksMs,
 );
 
-const isTestEnvironment =
-  process.env.NODE_ENV === "test" || process.env.VITEST === "true";
-
-const projectIndexingScheduler = isTestEnvironment
-  ? new NoopProjectIndexingScheduler()
-  : new AsyncProjectIndexingScheduler(indexProjectEmbeddingsUseCase);
-
-
-
-
 
 //Monto el generador de las preguntas
 const answerGenerator: AnswerGenerator =
@@ -229,7 +217,6 @@ export const container = {
   zipExtractor,
   idGenerator,
   generateCodeChunksForProjectFileUseCase,
-  projectIndexingScheduler,
 ),
   indexProjectEmbeddingsUseCase,
 
