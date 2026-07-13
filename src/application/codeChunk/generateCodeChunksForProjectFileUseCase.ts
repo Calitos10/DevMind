@@ -2,6 +2,10 @@ import { ProjectFile } from "../../domain/entities/projectFile";
 import { CodeChunk } from "../../domain/entities/codeChunk";
 import { CodeChunkRepository } from "../../domain/repository/codeChunkRepository";
 import { IdGenerator } from "../ports/idGeneratorPort";
+import type {
+  CodeChunkGenerator,
+  GenerateCodeChunksResult,
+} from "../ports/codeChunkGeneratorPort";
 
 export type ChunkResult = {
   content: string;
@@ -22,13 +26,9 @@ type GenerateCodeChunksForProjectFileInput = {
   projectFile: ProjectFile;
 };
 
-type GenerateCodeChunksForProjectFileOutput = {
-  projectFileId: string;
-  chunksCreated: number;
-  chunks: CodeChunk[];
-};
-
-export class GenerateCodeChunksForProjectFileUseCase {
+export class GenerateCodeChunksForProjectFileUseCase
+  implements CodeChunkGenerator
+{
   constructor(
     private readonly codeChunkRepository: CodeChunkRepository,
     private readonly codeChunker: CodeChunker,
@@ -37,7 +37,7 @@ export class GenerateCodeChunksForProjectFileUseCase {
 
   async execute(
     input: GenerateCodeChunksForProjectFileInput,
-  ): Promise<GenerateCodeChunksForProjectFileOutput> {
+  ): Promise<GenerateCodeChunksResult> {
     await this.codeChunkRepository.deleteByProjectFileId(input.projectFile.id);
 
     const chunkResults = this.codeChunker.chunk({

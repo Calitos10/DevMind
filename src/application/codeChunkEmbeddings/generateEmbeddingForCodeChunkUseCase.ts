@@ -3,18 +3,18 @@ import { CodeChunkEmbedding } from "../../domain/entities/codeChunkEmbedding";
 import { CodeChunkEmbeddingRepository } from "../../domain/repository/codeChunkEmbeddingRepository";
 import { IdGenerator } from "../ports/idGeneratorPort";
 import { EmbeddingGenerator } from "../ports/embeddingGenerator";
+import type {
+  EmbeddingForCodeChunkGenerator,
+  GenerateEmbeddingForCodeChunkResult,
+} from "../ports/embeddingForCodeChunkGeneratorPort";
 
 type GenerateEmbeddingForCodeChunkInput = {
   codeChunk: CodeChunk;
 };
 
-type GenerateEmbeddingForCodeChunkOutput = {
-  codeChunkId: string;
-  embeddingCreated: boolean;
-  codeChunkEmbedding: CodeChunkEmbedding;
-};
-
-export class GenerateEmbeddingForCodeChunkUseCase {
+export class GenerateEmbeddingForCodeChunkUseCase
+  implements EmbeddingForCodeChunkGenerator
+{
   constructor(
     private readonly codeChunkEmbeddingRepository: CodeChunkEmbeddingRepository,
     private readonly embeddingGenerator: EmbeddingGenerator,
@@ -23,7 +23,7 @@ export class GenerateEmbeddingForCodeChunkUseCase {
 
   async execute(
     input: GenerateEmbeddingForCodeChunkInput,
-  ): Promise<GenerateEmbeddingForCodeChunkOutput> {
+  ): Promise<GenerateEmbeddingForCodeChunkResult> {
     const embedding = await this.embeddingGenerator.generateEmbedding(
       input.codeChunk.content,
     );

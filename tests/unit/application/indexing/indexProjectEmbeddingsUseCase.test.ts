@@ -52,12 +52,19 @@ class FakeProjectIndexingJobRepository {
 class FakeGenerateEmbeddingForCodeChunkUseCase {
   public generatedCodeChunkIds: string[] = [];
 
-  async execute(input: { codeChunk: CodeChunk }): Promise<unknown> {
+  async execute(input: { codeChunk: CodeChunk }) {
     this.generatedCodeChunkIds.push(input.codeChunk.id);
 
     return {
       codeChunkId: input.codeChunk.id,
       embeddingCreated: true,
+      codeChunkEmbedding: {
+        id: `embedding-${input.codeChunk.id}`,
+        projectId: input.codeChunk.projectId,
+        codeChunkId: input.codeChunk.id,
+        embedding: [],
+        createdAt: new Date(),
+      },
     };
   }
 }
@@ -65,7 +72,7 @@ class FakeGenerateEmbeddingForCodeChunkUseCase {
 class FakeFailingGenerateEmbeddingForCodeChunkUseCase {
   public generatedCodeChunkIds: string[] = [];
 
-  async execute(input: { codeChunk: CodeChunk }): Promise<unknown> {
+  async execute(input: { codeChunk: CodeChunk }) {
     this.generatedCodeChunkIds.push(input.codeChunk.id);
 
     if (input.codeChunk.id === "chunk-2") {
@@ -75,6 +82,13 @@ class FakeFailingGenerateEmbeddingForCodeChunkUseCase {
     return {
       codeChunkId: input.codeChunk.id,
       embeddingCreated: true,
+      codeChunkEmbedding: {
+        id: `embedding-${input.codeChunk.id}`,
+        projectId: input.codeChunk.projectId,
+        codeChunkId: input.codeChunk.id,
+        embedding: [],
+        createdAt: new Date(),
+      },
     };
   }
 }

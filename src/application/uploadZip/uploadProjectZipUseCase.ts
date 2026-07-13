@@ -1,21 +1,18 @@
 import { createHash } from "node:crypto";
 
-import { ProjectFile } from "../../domain/entities/projectFile";
+import type { CodeChunkGenerator } from "../ports/codeChunkGeneratorPort";
 import { ProjectRepository } from "../../domain/repository/projectRepository";
 import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
 import { IdGenerator } from "../../application/ports/idGeneratorPort";
 import { ZipExtractor } from "../../application/ports/zipExtractor";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { NoValidProjectFilesFoundError } from "../../shared/errors/noValidProjectFilesFoundError";
+import { ProjectFileClassifier } from "../../domain/services/projectFileClassifier";
 
 type UploadProjectZipUseCaseInput = {
   projectId: string;
   ownerId: string;
   zipBuffer: Buffer;
-};
-
-type GenerateCodeChunksForProjectFileUseCase = {
-  execute(input: { projectFile: ProjectFile }): Promise<unknown>;
 };
 
 export class UploadProjectZipUseCase {
@@ -24,7 +21,8 @@ export class UploadProjectZipUseCase {
     private readonly projectFileRepository: ProjectFileRepository,
     private readonly zipExtractor: ZipExtractor,
     private readonly idGenerator: IdGenerator,
-    private readonly generateCodeChunksForProjectFileUseCase: GenerateCodeChunksForProjectFileUseCase,
+    private readonly generateCodeChunksForProjectFileUseCase: CodeChunkGenerator,
+    private readonly fileClassifier: ProjectFileClassifier = new ProjectFileClassifier(),
   ) {}
 
   async execute(input: UploadProjectZipUseCaseInput) {
@@ -43,10 +41,8 @@ export class UploadProjectZipUseCase {
 
     const extractedFiles = await this.zipExtractor.extract(input.zipBuffer);
 
-    const validFiles = extractedFiles.filter(
-      (extractedFile) =>
-        !isIgnoredProjectFilePath(extractedFile.path) &&
-        !isBinaryProjectFile(extractedFile),
+    const validFiles = extractedFiles.filter((extractedFile) =>
+      this.fileClassifier.isRelevant(extractedFile),
     );
 
     if (validFiles.length === 0) {
@@ -98,7 +94,7 @@ export class UploadProjectZipUseCase {
       if (existingProjectFile && existingProjectFile.hash !== hash) {
         const updatedProjectFile = await this.projectFileRepository.update({
           ...existingProjectFile,
-          language: detectLanguageFromPath(extractedFile.path),
+          language: this.fileClassifier.detectLanguage(extractedFile.path),
           content: extractedFile.content,
           size: Buffer.byteLength(extractedFile.content, "utf8"),
           hash,
@@ -117,7 +113,7 @@ export class UploadProjectZipUseCase {
         id: this.idGenerator.generate(),
         projectId: input.projectId,
         path: extractedFile.path,
-        language: detectLanguageFromPath(extractedFile.path),
+        language: this.fileClassifier.detectLanguage(extractedFile.path),
         content: extractedFile.content,
         size: Buffer.byteLength(extractedFile.content, "utf8"),
         hash,
@@ -176,76 +172,4 @@ export class UploadProjectZipUseCase {
       },
     };
   }
-}
-
-//Funciones helpers:
-
-function detectLanguageFromPath(path: string): string {
-  if (path.endsWith(".ts")) return "typescript";
-  if (path.endsWith(".tsx")) return "typescript";
-  if (path.endsWith(".js")) return "javascript";
-  if (path.endsWith(".jsx")) return "javascript";
-  if (path.endsWith(".json")) return "json";
-  if (path.endsWith(".md")) return "markdown";
-
-  return "unknown";
-}
-
-function isIgnoredProjectFilePath(path: string): boolean {
-  const ignoredFolders = new Set([
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    "coverage",
-    ".next",
-    "docs",
-  ]);
-
-  const pathParts = path.replaceAll("\\", "/").split("/");
-
-  return pathParts.some((part) => ignoredFolders.has(part));
-}
-
-function isBinaryProjectFile(file: { path: string; content: string }): boolean {
-  return hasBinaryExtension(file.path) || hasNullByte(file.content);
-}
-
-function hasNullByte(content: string): boolean {
-  return content.includes("\u0000");
-}
-
-function hasBinaryExtension(path: string): boolean {
-  const normalizedPath = path.toLowerCase();
-
-  const binaryExtensions = [
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".gif",
-    ".webp",
-    ".ico",
-    ".pdf",
-    ".zip",
-    ".gz",
-    ".tar",
-    ".exe",
-    ".dll",
-    ".so",
-    ".dylib",
-    ".db",
-    ".sqlite",
-    ".mp4",
-    ".mov",
-    ".mp3",
-    ".wav",
-    ".woff",
-    ".woff2",
-    ".ttf",
-    ".otf",
-  ];
-
-  return binaryExtensions.some((extension) =>
-    normalizedPath.endsWith(extension),
-  );
 }

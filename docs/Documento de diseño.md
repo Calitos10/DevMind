@@ -8075,17 +8075,97 @@ Nota: no se implementó el "paso 5" que se había documentado como opcional (exp
 
 ---
 
+## Fase 11.13 — Limpieza de `UploadProjectZipUseCase`: clasificador de dominio y puertos explícitos
+
+### El problema
+
+`UploadProjectZipUseCase` era el caso de uso más complejo del proyecto (unas 200 líneas) y **mezclaba responsabilidades que no le tocaban**:
+
+```txt
+1. Reglas de dominio incrustadas como funciones sueltas al final del archivo:
+   - detectLanguageFromPath  → qué lenguaje es según la extensión
+   - isIgnoredProjectFilePath → qué carpetas se ignoran (node_modules, .git...)
+   - isBinaryProjectFile      → qué se considera binario (extensión o byte nulo)
+   Ese conocimiento de negocio vivía dentro de un caso de uso cuya función
+   principal debería ser ORQUESTAR, no contener las reglas.
+
+2. Dependencias tipadas con un type local anónimo:
+   type GenerateCodeChunksForProjectFileUseCase = {
+     execute(input): Promise<unknown>;   ← acoplamiento implícito y sin tipado
+   };
+   El mismo problema existía en IndexProjectEmbeddingsUseCase con la
+   generación de embeddings.
+```
+
+### La solución y cómo se implementó (siguiendo TDD)
+
+Se abordó en dos partes, cada una en **TDD** (primero el test en rojo, luego la implementación):
+
+**Parte 1 — Extraer las reglas de dominio a un `ProjectFileClassifier`.**
+
+```txt
+- Nuevo servicio de dominio: src/domain/services/projectFileClassifier.ts
+    · isRelevant(file)     → true si el archivo no está en carpeta ignorada
+                             ni es binario (compone las reglas)
+    · detectLanguage(path) → el lenguaje según la extensión
+- Nuevo test propio: tests/unit/domain/services/projectFileClassifier.test.ts
+    (6 casos: archivos válidos, carpetas ignoradas, binarios por extensión,
+     byte nulo, detección de lenguaje, extensión desconocida)
+- UploadProjectZipUseCase pasa a USAR el clasificador en lugar de las funciones
+  sueltas, que se eliminan del archivo.
+```
+
+**Parte 2 — Puertos explícitos para los casos de uso anidados.**
+
+```txt
+- Nuevos puertos en application/ports:
+    · CodeChunkGenerator            (codeChunkGeneratorPort.ts)
+    · EmbeddingForCodeChunkGenerator (embeddingForCodeChunkGeneratorPort.ts)
+  Cada uno con su tipo de resultado explícito (ya no Promise<unknown>).
+- Los casos de uso concretos ahora IMPLEMENTAN su puerto:
+    · GenerateCodeChunksForProjectFileUseCase   implements CodeChunkGenerator
+    · GenerateEmbeddingForCodeChunkUseCase      implements EmbeddingForCodeChunkGenerator
+- UploadProjectZipUseCase e IndexProjectEmbeddingsUseCase dependen ahora del
+  puerto (interfaz nombrada) en vez del type local anónimo.
+```
+
+Las reglas de comportamiento (qué carpetas se ignoran, qué es binario, qué lenguaje) se copiaron **tal cual** al clasificador: es un refactor que **no cambia el comportamiento**, y los tests de integración de la subida de ZIP (que ya existían) sirvieron de red de seguridad para garantizarlo.
+
+### Decisiones de diseño
+
+1. **El clasificador es un servicio de DOMINIO** (`src/domain/services/`), no de aplicación ni de infraestructura. "Qué archivos interesan" y "en qué lenguaje están" son reglas de negocio puras, sin entrada/salida, así que su sitio natural es el dominio.
+
+2. **El clasificador se inyecta con un valor por defecto** (`fileClassifier: ProjectFileClassifier = new ProjectFileClassifier()`). Es el mismo patrón que ya se usa en otros adaptadores del proyecto: no obliga a tocar el `container` ni los tests existentes, pero deja la dependencia explícita y sustituible.
+
+3. **Los puertos devuelven el tipo de resultado real, no `Promise<unknown>` ni `Promise<void>`.** Se comprobó que TypeScript no admite que un `Promise<objeto>` satisfaga un puerto `Promise<void>`, así que el contrato refleja lo que la operación produce de verdad. El resultado: un contrato **nombrado, explícito y tipado**, frente al anterior tipo anónimo y opaco.
+
+4. **Refactor en pasos pequeños y verificados.** Primero el clasificador (con su test), verificando verde; después los puertos. Cada paso se comprobó con `typecheck` + tests antes de seguir.
+
+### Qué NO se hizo (y por qué)
+
+La tercera parte prevista —extraer un `ProjectFilesSynchronizer` que encapsule el diff de sincronización (crear/actualizar/borrar/mantener)— **no se implementó** en esta fase. Es la extracción de mayor tamaño y su beneficio es sobre todo de limpieza; se deja documentada como limitación asumida en la Defensa, para acometerla más adelante sin prisa. Con el clasificador y los puertos, el caso de uso ya ha adelgazado de forma notable.
+
+```txt
+✅ Reglas de dominio extraídas a ProjectFileClassifier (con su propio test)
+✅ Puertos explícitos CodeChunkGenerator y EmbeddingForCodeChunkGenerator
+✅ Casos de uso concretos implementan sus puertos (fin de Promise<unknown>)
+✅ Comportamiento idéntico (refactor cubierto por los tests existentes)
+✅ Implementado con TDD, en pasos pequeños y verificados
+```
+
+---
+
 ## Verificación de la Fase 11
 
 Tras aplicar todos los cambios:
 
 ```txt
 npm run typecheck  → sin errores
-npm test           → 148/148 tests en verde (37 archivos), sin llamadas reales
+npm test           → 154/154 tests en verde (38 archivos), sin llamadas reales
                      a Gemini (embeddings faked en entorno de test)
-                     [141 → 148 al añadir los 7 tests de reintentos con backoff]
-smoke test         → la app arranca con el adaptador de embeddings con reintentos,
-                     helmet, CORS por entorno y los rate limits, sin errores
+                     [148 → 154 al añadir los 6 tests del ProjectFileClassifier]
+smoke test         → la app arranca con el clasificador, los puertos explícitos,
+                     los reintentos, helmet, CORS y rate limits, sin errores
 openapi.yaml       → YAML válido tras la sincronización
 ```
 
@@ -8093,4 +8173,4 @@ openapi.yaml       → YAML válido tras la sincronización
 
 ## Estado tras la Fase 11
 
-La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos y OpenAPI sincronizado). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.
+La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.

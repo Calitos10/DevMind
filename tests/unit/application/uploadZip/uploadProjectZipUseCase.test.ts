@@ -31,9 +31,15 @@ class FakeGenerateCodeChunksForProjectFileUseCase {
       id: string;
       path: string;
     };
-  }): Promise<void> {
+  }) {
     this.generatedProjectFileIds.push(input.projectFile.id);
     this.generatedProjectFilePaths.push(input.projectFile.path);
+
+    return {
+      projectFileId: input.projectFile.id,
+      chunksCreated: 0,
+      chunks: [],
+    };
   }
 }
 

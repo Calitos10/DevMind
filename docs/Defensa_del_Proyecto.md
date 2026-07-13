@@ -1237,17 +1237,18 @@ Justo sobre esas columnas se apoyan las consultas más frecuentes del sistema: `
 
 La mejora natural, si el proyecto creciera a un volumen real de datos, sería añadir una migración con `CREATE INDEX` sobre esas tres columnas. Cabe destacar que en la tabla de embeddings (`code_chunk_embeddings`) sí se crearon índices manualmente, por lo que el patrón ya está aplicado donde el rendimiento importaba desde el principio.
 
-## El caso de uso `UploadProjectZipUseCase` concentra demasiadas responsabilidades
+## El caso de uso `UploadProjectZipUseCase` todavía contiene la lógica de sincronización
 
-`UploadProjectZipUseCase` es el caso de uso más complejo del proyecto (en torno a 200 líneas) y mezcla en un único `execute` varias responsabilidades: comprobar la propiedad del proyecto, extraer el ZIP, filtrar los archivos, detectar el lenguaje, calcular el hash, sincronizar por `path` + `hash` (crear/actualizar/borrar/mantener), y programar la indexación en segundo plano.
+`UploadProjectZipUseCase` era el caso de uso más complejo del proyecto y concentraba varias responsabilidades que no le tocaban. Buena parte de esa deuda ya se ha corregido (ver Fase 11.13 del documento de diseño):
 
-Además, reglas que en realidad son de **dominio** viven como funciones sueltas al final del archivo del caso de uso: `detectLanguageFromPath`, `isIgnoredProjectFilePath` e `isBinaryProjectFile`. Es decir, conocimiento de negocio ("qué carpetas se ignoran", "qué se considera un archivo binario", "cómo se detecta el lenguaje a partir de la extensión") está incrustado en un caso de uso cuya función principal debería ser **orquestar**, no contener esas reglas.
+- Las **reglas de dominio** (qué carpetas se ignoran, qué se considera un archivo binario y cómo se detecta el lenguaje) se extrajeron a un servicio de dominio propio, `ProjectFileClassifier`, con su propio test. Ya no viven como funciones sueltas dentro del caso de uso.
+- El **tipado de las dependencias** se corrigió: los casos de uso anidados (generación de chunks y de embeddings) se declaran ahora mediante **puertos explícitos** (`CodeChunkGenerator`, `EmbeddingForCodeChunkGenerator`) en `application/ports`, en lugar de un `type` local anónimo con `Promise<unknown>`.
 
-A esto se suma un detalle de tipado: los casos de uso anidados (generación de chunks y de embeddings) se declaran como dependencias mediante un `type` local anónimo del estilo `{ execute(input): Promise<unknown> }`, en lugar de un puerto explícito en `application/ports`. Eso acopla de forma implícita y hace perder el tipado del resultado (`Promise<unknown>`).
+**Lo que queda como limitación consciente:** el caso de uso sigue conteniendo, dentro de su `execute`, la **lógica de sincronización** por `path` + `hash` (el bucle que decide qué archivos crear, actualizar, borrar o dejar sin cambios). Esa parte no se ha extraído todavía.
 
-**Por qué se ha dejado como limitación consciente y no se ha refactorizado:** el caso de uso funciona correctamente y está bien cubierto por tests de integración (subida y sincronización por `path` + `hash`). Un refactor de esta pieza es el cambio con más riesgo de todos los detectados, porque toca lógica central que ya está en producción, y su beneficio es sobre todo de mantenibilidad y limpieza arquitectónica, no de comportamiento. Para el alcance de este TFM se ha priorizado la estabilidad, dejándolo documentado como deuda técnica asumida de forma deliberada.
+**Por qué se ha dejado así:** extraer esa sincronización a un servicio propio (`ProjectFilesSynchronizer`) es la parte de mayor tamaño y más riesgo, porque es lógica central que ya está en producción, y su beneficio es de limpieza y mantenibilidad, no de comportamiento. Como el caso de uso ya ha adelgazado de forma notable con la extracción del clasificador y los puertos, se ha priorizado la estabilidad y se deja esta última extracción documentada como deuda técnica asumida de forma deliberada.
 
-La mejora natural sería extraer las reglas de dominio a un servicio propio (por ejemplo un `ProjectFileClassifier` / `LanguageDetector`) y, opcionalmente, un `ProjectFilesSynchronizer` para el diff de sincronización, además de definir puertos explícitos para los casos de uso anidados. Así el `UploadProjectZipUseCase` quedaría como un orquestador delgado, más fácil de leer y de testear por partes.
+La mejora natural sería extraer un `ProjectFilesSynchronizer` que encapsule ese diff, de modo que `UploadProjectZipUseCase` quede como un orquestador delgado (validar propiedad → extraer → clasificar → sincronizar → devolver resumen), más fácil de leer y de testear por partes.
 
 ## Chunking basado en AST (sintáctico) en lugar de por líneas
 
