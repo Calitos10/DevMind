@@ -7991,17 +7991,101 @@ genera embeddings; si Gemini falla, el error vuelve por HTTP (errorMiddleware)
 
 ---
 
+## Fase 11.12 — Reintentos con backoff ante fallos transitorios del proveedor de embeddings
+
+### El problema y cómo me di cuenta
+
+Probando la API con un proyecto real, la generación de embeddings falló en un chunk (el 82 de 397) porque Gemini devolvió un `503 Service Unavailable`. Era un fallo **transitorio**: el servicio estaba caído unos segundos. El problema es que el código **no reintentaba**, así que una única incidencia puntual tumbaba la indexación entera y obligaba a relanzarla desde cero.
+
+Al analizarlo me di cuenta de que el problema de fondo no era "Gemini falla", sino que **no tolerábamos fallos temporales de un servicio externo**, algo totalmente esperable al integrarse con cualquier API de terceros. La primera vez que lo detecté, la indexación era automática en segundo plano; en la Fase 11.11 pasó a ser manual y síncrona, lo que además hace que ahora este tipo de error llegue al usuario por HTTP.
+
+### La solución
+
+**Reintentos con backoff exponencial**: ante un error transitorio, esperar cada vez un poco más (1s, 2s, 4s) y reintentar, en lugar de rendirse a la primera. Si el proveedor solo parpadeó, lo más probable es que un reintento funcione y no se pierda nada.
+
+Dos matices importantes de la solución:
+
+```txt
+- Solo se reintentan los errores TRANSITORIOS: 503 (UNAVAILABLE) y 429
+  (RESOURCE_EXHAUSTED). Un error "de verdad" (p. ej. API key inválida) NO se
+  reintenta, porque reintentarlo no lo arreglaría; falla directo.
+- Si tras agotar los reintentos el proveedor sigue caído, se lanza un error de
+  dominio tipado (EmbeddingProviderUnavailableError, un AppError con código 503),
+  que el errorMiddleware convierte en una respuesta HTTP clara.
+```
+
+### Cómo se implementó (siguiendo TDD)
+
+Como el resto del proyecto, esta mejora se hizo con **TDD**: primero el test en rojo, luego la implementación mínima para ponerlo en verde.
+
+```txt
+Piezas nuevas:
+  - src/infrastructure/retry/retryWithBackoff.ts
+        utilidad genérica de reintentos con backoff.
+  - src/shared/errors/embeddingProviderUnavailableError.ts
+        error de dominio (extiende AppError, código 503).
+
+Piezas modificadas:
+  - GenkitEmbeddingGenerator: envuelve la llamada ai.embed(...) con
+        retryWithBackoff y, si el fallo persiste, traduce el error crudo de
+        Genkit al error de dominio tipado.
+  - env.ts + .env/.env.example: EMBEDDING_MAX_RETRIES (3) y
+        EMBEDDING_RETRY_BASE_MS (1000).
+  - container.ts: inyecta el puerto Delay y la config en el adaptador.
+
+Tests escritos primero:
+  - retryWithBackoff.test.ts            (4 casos)
+  - genkitEmbeddingGenerator.test.ts    (3 casos nuevos de reintento)
+```
+
+### Decisiones de diseño
+
+1. **Los reintentos viven en infraestructura, no en aplicación.** La utilidad está en `src/infrastructure/retry/` y quien reintenta es el adaptador. Reintentar es un detalle de *cómo* se habla con un servicio externo, no lógica de negocio; por eso **no** se puso como un puerto de aplicación ni dentro de un caso de uso. Los casos de uso ni se enteran de que hay reintentos por debajo.
+
+2. **La utilidad es genérica; el conocimiento de Gemini queda en el adaptador.** `retryWithBackoff` no sabe qué es un error de Genkit: recibe un predicado `isRetryable`. Quien sabe qué error es "transitorio" (`isTransientGenkitError`) es el adaptador, la única pieza que conoce Genkit. Así la utilidad se podría reutilizar mañana (por ejemplo para el generador de respuestas) sin acoplarla a ningún proveedor.
+
+3. **La traducción del error también en el adaptador.** El error crudo de Genkit se traduce al error de dominio `EmbeddingProviderUnavailableError` en el adaptador, igual que en la Fase 11.1 se encapsuló el algoritmo del JWT en `JwtTokenService`. La capa de aplicación no depende de cómo falla Gemini.
+
+4. **Reutilizar el puerto `Delay` existente.** El backoff espera mediante el mismo puerto `Delay` que ya usa `IndexProjectEmbeddingsUseCase`, inyectado por constructor. Gracias a eso, los tests usan un `Delay` falso que resuelve al instante y **no esperan de verdad** (los reintentos se testean sin que la suite tarde segundos).
+
+5. **Números configurables por entorno.** 3 reintentos y base 1000 ms por defecto (esperas 1s→2s→4s, ~7s máximo por chunk que falle), ajustables por `.env` sin tocar código, como ya se hace con el resto de parámetros.
+
+### Resultado / flujo
+
+```txt
+Usuario pulsa "Indexar" → POST /:id/index (síncrono)
+   → por cada chunk, GenkitEmbeddingGenerator llama a Gemini
+       → 503/429: reintenta con backoff (1s, 2s, 4s)
+       → si acierta en un reintento: sigue normal, sin perder progreso
+       → si se rinde: lanza EmbeddingProviderUnavailableError (503)
+   → IndexProjectEmbeddingsUseCase marca el job "failed", guarda el mensaje, relanza
+   → errorMiddleware → 503 con mensaje claro en la respuesta del botón
+```
+
+Nota: no se implementó el "paso 5" que se había documentado como opcional (exponer `errorMessage` en `/indexing-status`), porque con la indexación ya manual y síncrona (Fase 11.11) el error llega directamente por la respuesta HTTP del botón. La entrada correspondiente se retira de "Mejoras futuras" de la Defensa al quedar implementada aquí.
+
+```txt
+✅ Reintentos con backoff ante 503/429 del proveedor de embeddings
+✅ Utilidad retryWithBackoff genérica y reutilizable (infraestructura)
+✅ Error tipado EmbeddingProviderUnavailableError (503) tras agotar reintentos
+✅ Solo se reintentan los errores transitorios; el resto falla directo
+✅ Reintentos y backoff configurables por .env
+✅ Implementado con TDD (7 tests nuevos, todos en verde)
+```
+
+---
+
 ## Verificación de la Fase 11
 
 Tras aplicar todos los cambios:
 
 ```txt
 npm run typecheck  → sin errores
-npm test           → 141/141 tests en verde (36 archivos), ahora sin llamadas
-                     reales a Gemini (embeddings faked en entorno de test)
-                     (baja de 142 a 141 al eliminar el test del scheduler)
-smoke test         → la app arranca sin el scheduler, con helmet, CORS por
-                     entorno y los rate limits, sin errores
+npm test           → 148/148 tests en verde (37 archivos), sin llamadas reales
+                     a Gemini (embeddings faked en entorno de test)
+                     [141 → 148 al añadir los 7 tests de reintentos con backoff]
+smoke test         → la app arranca con el adaptador de embeddings con reintentos,
+                     helmet, CORS por entorno y los rate limits, sin errores
 openapi.yaml       → YAML válido tras la sincronización
 ```
 
@@ -8009,4 +8093,4 @@ openapi.yaml       → YAML válido tras la sincronización
 
 ## Estado tras la Fase 11
 
-La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos y OpenAPI sincronizado). La **única excepción con cambio de comportamiento observable** es la Fase 11.11: tras subir un ZIP, DevMind **ya no indexa automáticamente**; la indexación pasa a ser una acción explícita del usuario mediante `POST /projects/:id/index`, lo que además hace que los fallos del proveedor de embeddings se comuniquen por HTTP en lugar de quedar en segundo plano de forma silenciosa. En conjunto, el proyecto queda más seguro, más simple y más honesto en cómo comunica los errores.
+La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos y OpenAPI sincronizado). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.

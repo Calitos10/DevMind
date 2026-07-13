@@ -1257,91 +1257,11 @@ La mejora natural sería extraer las reglas de dominio a un servicio propio (por
 
 # 14. Mejoras futuras
 
-## Reintentos con backoff ante fallos transitorios del proveedor de embeddings
+### Indexación automática en segundo plano
 
-### El problema
+**Estado actual:** la indexación es una **acción manual**. Tras subir el ZIP, DevMind guarda los archivos y responde enseguida, y es el usuario quien lanza la generación de embeddings de forma explícita (con el botón "Indexar"). Se decidió así porque la indexación es una operación costosa y, al hacerla explícita y síncrona, sus errores se comunican de forma clara al usuario en el momento.
 
-La generación de embeddings depende de un servicio externo (Gemini vía Genkit). Como todo servicio externo, ese proveedor puede fallar de forma **puntual y transitoria**: un `503 Service Unavailable` (servicio momentáneamente saturado o caído unos segundos) o un `429 Resource Exhausted` (se ha superado el límite de peticiones por minuto). Estos fallos no significan que la petición esté mal, sino que "ahora mismo no puedo, inténtalo de nuevo en un momento".
-
-Actualmente, `IndexProjectEmbeddingsUseCase` tiene el bloque `try/catch` envolviendo **todo el bucle** que recorre los chunks. Esto tiene una consecuencia dura: en cuanto **un solo chunk** falla al generar su embedding, se lanza una excepción que aborta la indexación entera. El job se marca como `failed`, y todo el progreso anterior de esa ejecución se pierde. No hay ningún intento de reintentar el chunk que ha fallado antes de rendirse.
-
-### Qué me pasó realmente (caso que motivó esta mejora)
-
-Al subir un proyecto real, la indexación en segundo plano arrancó correctamente y empezó a generar embeddings. En el chunk número 82 de un total de 397, Gemini devolvió:
-
-```txt
-GenkitError: UNAVAILABLE: Error fetching from
-https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent:
-[503 Service Unavailable] The service is currently unavailable.
-```
-
-Fue un fallo transitorio: el endpoint de embeddings de Gemini estaba caído durante unos instantes. Pero como no hay reintentos, ese único 503 **tumbó la indexación completa**: el estado quedó en `failed · progreso 21% · procesados 82 · fallidos 1`. Para continuar, tuve que relanzar la indexación manualmente con `POST /projects/:id/index`, lo que **volvió a empezar desde 0** los 397 chunks (relacionado con la limitación de "indexación no incremental" del apartado 13).
-
-Lo frustrante es que, si hubiera reintentado ese chunk una o dos veces esperando un poco, lo más probable es que el segundo intento hubiera funcionado y no se habría perdido nada.
-
-### Cómo se soluciona: reintentos con backoff exponencial
-
-La técnica estándar para fallos transitorios de un servicio externo es **reintentar la operación esperando cada vez un poco más** antes de rendirse. A esa espera creciente se le llama *exponential backoff*:
-
-```txt
-Intento 1 → falla 503 → espera ~1s
-Intento 2 → falla 503 → espera ~2s
-Intento 3 → falla 503 → espera ~4s
-Intento 4 → sigue fallando → ahora sí, se da por fallido
-```
-
-La espera creciente es importante: si el proveedor está saturado, machacarlo con reintentos inmediatos solo empeora la situación; darle un margen cada vez mayor le da tiempo a recuperarse. Y solo se considera un fallo definitivo cuando el servicio está realmente caído (no un simple parpadeo).
-
-Un matiz clave: **no todos los errores deben reintentarse**. Solo tiene sentido reintentar los **transitorios** (`503 UNAVAILABLE`, `429 RESOURCE_EXHAUSTED`). Un error "de verdad" —por ejemplo una API key inválida (`401`) o una petición malformada (`400`)— no se va a arreglar reintentando, así que debe fallar de inmediato sin gastar reintentos.
-
-### Cómo se implementaría en el proyecto
-
-Respetando la arquitectura hexagonal, el reintento vive en la **capa de infraestructura** (es un detalle de cómo se habla con el proveedor externo), no en los casos de uso:
-
-```txt
-1. Utilidad reutilizable de reintentos
-   - Nuevo helper retryWithBackoff(fn, opciones) en infraestructura.
-   - Recibe una función asíncrona y la ejecuta; si lanza un error transitorio,
-     espera (backoff) y reintenta hasta agotar el número máximo de intentos.
-   - Reutiliza el mismo puerto Delay que ya usa IndexProjectEmbeddingsUseCase
-     para las esperas (así sigue siendo testeable sin esperas reales).
-
-2. Aplicarlo en GenkitEmbeddingGenerator
-   - src/infrastructure/genkit/genkitEmbeddingGenerator.ts envuelve la llamada
-     a ai.embed(...) con retryWithBackoff.
-   - Detecta si el error es transitorio (503/UNAVAILABLE, 429/RESOURCE_EXHAUSTED)
-     mirando el status/code del GenkitError. Si lo es, reintenta; si no, relanza.
-
-3. Configuración por entorno (.env)
-   - EMBEDDING_MAX_RETRIES (p. ej. 3)
-   - EMBEDDING_RETRY_BASE_MS (p. ej. 1000)
-   - Igual que ya se hace con INDEXING_DELAY_BETWEEN_CHUNKS_MS, para poder
-     ajustar el comportamiento sin tocar código.
-
-4. Error tipado como red de seguridad (cuando se agotan los reintentos)
-   - Si tras todos los reintentos el proveedor sigue caído (caída real, no un
-     parpadeo), se lanza un error de dominio tipado, p. ej.
-     EmbeddingProviderUnavailableError (extiende AppError, código 503), con un
-     mensaje claro tipo: "Ha habido un problema con el proveedor de embeddings
-     y la indexación ha fallado. Vuelve a lanzar la indexación manualmente."
-   - Como IndexProjectEmbeddingsUseCase ya guarda error.message en el
-     errorMessage del job, ese texto amigable quedaría reflejado en el estado.
-   - En la ruta manual POST /:id/index, el errorMiddleware ya sabe manejar
-     AppError, así que devolvería un 503 con ese mensaje en vez del 500 genérico.
-
-5. Exponer errorMessage en el estado de indexación
-   - getProjectIndexingStatusUseCase actualmente NO devuelve el campo
-     errorMessage. Añadirlo permitiría que el frontend, cuando el estado es
-     "failed", muestre el motivo y un botón de "Reintentar indexación".
-```
-
-En resumen, esta mejora tiene dos capas complementarias: los **reintentos con backoff** hacen que la mayoría de fallos transitorios (como el 503 que me ocurrió) se resuelvan solos sin perder progreso; y el **error tipado + errorMessage en el estado** cubren el caso en que el proveedor esté caído de verdad, informando al usuario con un mensaje claro en lugar de un fallo mudo. Son cambios independientes entre sí y del resto del sistema, por lo que pueden implementarse por separado.
-
-### Cola de indexación real (workers, reintentos y persistencia)
-
-**Estado actual:** la indexación en segundo plano se lanza con un patrón "fire-and-forget" dentro del propio proceso de la API (`AsyncProjectIndexingScheduler` hace `void useCase.execute().catch(console.error)`). Esto implica que, si el servidor se reinicia a mitad de una indexación, el trabajo se pierde; no hay reintentos automáticos; no hay control de concurrencia si llegan varias subidas a la vez; y un job puede quedarse en estado `processing` para siempre si el proceso muere.
-
-**Mejora:** sustituir ese scheduler por una **cola persistente** con workers, reintentos y recuperación de trabajos colgados. Una opción muy natural es `pg-boss`, que usa el **propio PostgreSQL** como cola (sin añadir infraestructura nueva); otra es `BullMQ` con Redis. Lo importante es que la arquitectura ya está preparada: existe el puerto `ProjectIndexingScheduler`, así que bastaría con crear un nuevo adaptador (`QueueProjectIndexingScheduler`) e inyectarlo desde el `container`, **sin tocar ningún caso de uso**.
+**Mejora:** hacer que la indexación vuelva a ser **automática y en segundo plano**, de modo que el usuario solo tenga que subir el ZIP y DevMind se encargue del resto sin ningún paso adicional. La clave para hacerlo bien (y no como un simple proceso "lanzado y olvidado") sería apoyarse en un sistema de trabajos en segundo plano que garantice que la indexación se reintenta si falla, que no se pierde si el servidor se reinicia y que su progreso y sus errores se pueden consultar después. La arquitectura ya está preparada para ello: la indexación está encapsulada en su propio caso de uso, así que este cambio se podría añadir sin alterar la lógica existente.
 
 ### Índice ANN de pgvector (HNSW) para la búsqueda semántica
 

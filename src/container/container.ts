@@ -110,11 +110,15 @@ const idGenerator = new CryptoIdGenerator();
 const fileHashGenerator = new CryptoFileHashGenerator();
 const zipExtractor = new AdmZipExtractor();
 const codeChunker = new LineCodeChunker();
+const delay = new TimeoutDelay();
 const embeddingGenerator: EmbeddingGenerator =
   process.env.NODE_ENV === "test"
     ? new TestEmbeddingGenerator()
-    : new GenkitEmbeddingGenerator();
-const delay = new TimeoutDelay();
+    : new GenkitEmbeddingGenerator(
+        delay,
+        env.embedding.maxRetries,
+        env.embedding.retryBaseMs,
+      );
 
 
 

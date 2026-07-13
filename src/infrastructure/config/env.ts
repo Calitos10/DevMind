@@ -38,6 +38,11 @@ export const env = {
     delayBetweenChunksMs:
       Number(process.env.INDEXING_DELAY_BETWEEN_CHUNKS_MS) || 1000,
   },
+  // Reintentos ante fallos transitorios del proveedor de embeddings (503/429).
+  embedding: {
+    maxRetries: Number(process.env.EMBEDDING_MAX_RETRIES) || 3,
+    retryBaseMs: Number(process.env.EMBEDDING_RETRY_BASE_MS) || 1000,
+  },
   rag: {
     // Distancia máxima (operador <-> de pgvector, L2) que se acepta para
     // considerar que un chunk es relevante. Los chunks más lejanos que este
