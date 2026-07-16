@@ -2,7 +2,7 @@
 
 ## 1. Qué es DevMind
 
-DevMind es una API backend que permite a los usuarios generar una base de conocimiento a partir de sus proyectos de código. 
+DevMind es una API backend que permite a los usuarios generar una base de conocimiento a partir de sus proyectos de código.
 
 El usuario puede subir un proyecto en formato ZIP, la API extrae los archivos relevantes, los divide en fragmentos o chunks, genera embeddings de esos fragmentos y los almacena en PostgreSQL usando pgvector.
 
@@ -19,7 +19,6 @@ Este problema aparece, por ejemplo, cuando un desarrollador entra en un proyecto
 DevMind ayuda a resolver este problema permitiendo que un usuario suba un proyecto y pueda hacer preguntas sobre él en lenguaje natural. En lugar de tener que buscar manualmente entre todos los archivos, el usuario puede preguntar cosas como dónde se registra un usuario, cómo se sube un ZIP o qué caso de uso se encarga de una operación concreta.
 
 De esta forma, DevMind facilita la comprensión de proyectos software y reduce el tiempo necesario para orientarse dentro de una base de código.
-
 
 ## 3. Arquitectura general
 
@@ -60,9 +59,10 @@ Una vez validada la petición, se llama al método `register` del `AuthControlle
 
 El método `register` recoge los datos ya validados del body y se los pasa al caso de uso `RegisterUserUseCase`. Este caso de uso contiene la lógica de registro: comprueba si ya existe un usuario con ese email, hashea la contraseña, genera un identificador para el usuario y guarda el nuevo usuario en el repositorio.
 
-Es importante recalcar que la contraseña no se guarda en texto plano por un tema de seguridad. Si la base de datos se filtrase o alguien consiguiera acceso a ella, podría ver directamente algo como:  email: usuario@example.com , password: miContraseña123
+Es importante recalcar que la contraseña no se guarda en texto plano por un tema de seguridad. Si la base de datos se filtrase o alguien consiguiera acceso a ella, podría ver directamente algo como: email: usuario@example.com , password: miContraseña123
 
 Esto es peligroso por estas razones:
+
 1. Podrían entrar en la cuenta del usuario dentro de DevMind.
 2. Si el usuario usa la misma contraseña en Gmail, Instagram, GitHub, banco, etc., también podrían intentar entrar allí.
 3. Como desarrollador, estariamos almacenando información sensible de forma insegura.
@@ -81,7 +81,7 @@ La petición sigue un flujo parecido al registro: entra por `app.ts`, pasa por l
 
 El método `login` recoge el email y la contraseña del body y llama al caso de uso `LoginUserUseCase`.
 
-Este caso de uso primero busca al usuario por email en el repositorio. Si no existe, lanza un error de credenciales inválidas. Si el usuario existe, compara la contraseña enviada con el `passwordHash` guardado en base de datos usando el servicio de hashing. Si la contraseña no coincide, lanza un error de credenciales inválidas. 
+Este caso de uso primero busca al usuario por email en el repositorio. Si no existe, lanza un error de credenciales inválidas. Si el usuario existe, compara la contraseña enviada con el `passwordHash` guardado en base de datos usando el servicio de hashing. Si la contraseña no coincide, lanza un error de credenciales inválidas.
 
 Si la contraseña es correcta, el caso de uso llama al servicio de generación de tokens. Este servicio genera un JWT usando información del usuario, como su `userId` y su email.
 
@@ -108,7 +108,6 @@ Una vez superado el middleware, la petición llega al método correspondiente de
 Ese método obtiene el `userId` desde la request y se lo pasa al caso de uso `GetCurrentUserUseCase`. Este caso de uso busca al usuario en el repositorio mediante su identificador y devuelve la información del usuario autenticado.
 
 Finalmente, el controlador responde con los datos del usuario.
-
 
 ## 5. Flujo de proyectos
 
@@ -319,7 +318,6 @@ Si un usuario intenta crear, listar, consultar o borrar un archivo usando el `pr
 
 En resumen, el archivo hereda la seguridad de su proyecto. No es necesario guardar `ownerId` en `project_files`, porque nunca se accede a un archivo sin comprobar antes que el proyecto pertenece al usuario autenticado.
 
-
 ## 7. Flujo de subida ZIP y sincronización por path + hash
 
 Un usuario autenticado puede subir un proyecto completo en formato ZIP.
@@ -454,19 +452,19 @@ También puede devolver arrays con los archivos clasificados en cada categoría.
 De forma simplificada, la respuesta tiene una estructura parecida a esta:
 
 {
-  "projectId": "project-1",
-  "summary": {
-    "created": 2,
-    "updated": 1,
-    "deleted": 1,
-    "unchanged": 5
-  },
-  "files": {
-    "created": [],
-    "updated": [],
-    "deleted": [],
-    "unchanged": []
-  }
+"projectId": "project-1",
+"summary": {
+"created": 2,
+"updated": 1,
+"deleted": 1,
+"unchanged": 5
+},
+"files": {
+"created": [],
+"updated": [],
+"deleted": [],
+"unchanged": []
+}
 }
 
 ### Seguridad en creación de archivos y subida de ZIP
@@ -708,7 +706,7 @@ Si hay cambios, el caso de uso llama al scheduler de indexación.
 Este scheduler recibe:
 
 - el `projectId`;
-- el `ownerId`  del usuario autenticado.
+- el `ownerId` del usuario autenticado.
 
 El scheduler no se espera con `await` desde la subida del ZIP. Su método devuelve `void`, porque su responsabilidad no es devolver los embeddings, sino lanzar el proceso de indexación en segundo plano.
 
@@ -871,7 +869,6 @@ En resumen, la indexación asíncrona permite que DevMind procese proyectos gran
 ```txt
 DevMind separa la subida del ZIP de la generación de embeddings. Primero guarda archivos y chunks, responde rápido al usuario y después genera los embeddings en segundo plano, actualizando el estado en project_indexing_jobs.
 ```
-
 
 # 10. Flujo RAG de preguntas
 
@@ -1069,7 +1066,6 @@ En resumen, DevMind usa RAG para no enviar todo el proyecto completo a la IA. Pr
 
 ---
 
-
 ```txt
 En el flujo RAG, DevMind convierte la pregunta en un embedding, busca en pgvector los chunks más similares del proyecto y usa esos chunks como contexto para que la IA genere una respuesta con fuentes.
 ```
@@ -1079,7 +1075,6 @@ Otra frase importante:
 ```txt
 El embedding de la pregunta solo se usa para recuperar contexto. La respuesta final se genera con la pregunta original en texto y los chunks recuperados.
 ```
-
 
 # 11. Tests y TDD
 
@@ -1171,7 +1166,7 @@ Cada repositorio tiene una implementación en memoria y otra en PostgreSQL, amba
 
 ## Autenticación stateless con JWT y contraseñas con bcrypt
 
-El login devuelve un **JWT** firmado (HS256, con expiración) que el cliente envía en cada petición protegida. Se eligió un enfoque *stateless* (sin sesiones en servidor) por simplicidad y escalabilidad. Las contraseñas **nunca se guardan en texto plano**: se almacena solo un hash con `bcrypt`. La alternativa de guardar la contraseña directamente se descartó por motivos obvios de seguridad.
+El login devuelve un **JWT** firmado (HS256, con expiración) que el cliente envía en cada petición protegida. Se eligió un enfoque _stateless_ (sin sesiones en servidor) por simplicidad y escalabilidad. Las contraseñas **nunca se guardan en texto plano**: se almacena solo un hash con `bcrypt`. La alternativa de guardar la contraseña directamente se descartó por motivos obvios de seguridad.
 
 ## Seguridad por `ownerId` y respuesta 404 en lugar de 403
 
@@ -1195,7 +1190,7 @@ Toda la comunicación con el modelo de IA (embeddings y generación de respuesta
 
 ## Subida de ZIP en memoria y filtrado defensivo
 
-El ZIP se recibe con **multer en memoria** (`memoryStorage`), como un `Buffer` que nunca se escribe a disco. Esto, además de ser más simple, evita de raíz ataques de *path traversal* al sistema de archivos. Sobre el contenido se aplican varios filtros: se ignoran carpetas ruidosas (`node_modules`, `.git`, `dist`…), archivos binarios (por extensión y por bytes nulos) y se limita el tamaño comprimido y descomprimido del ZIP para protegerse de *zip bombs*.
+El ZIP se recibe con **multer en memoria** (`memoryStorage`), como un `Buffer` que nunca se escribe a disco. Esto, además de ser más simple, evita de raíz ataques de _path traversal_ al sistema de archivos. Sobre el contenido se aplican varios filtros: se ignoran carpetas ruidosas (`node_modules`, `.git`, `dist`…), archivos binarios (por extensión y por bytes nulos) y se limita el tamaño comprimido y descomprimido del ZIP para protegerse de _zip bombs_.
 
 ## Validación de entrada con Zod
 
@@ -1223,6 +1218,20 @@ Esto tiene tres consecuencias:
 
 La mejora natural sería que `IndexProjectEmbeddingsUseCase` solo procesase los chunks pertenecientes a los `ProjectFile` marcados como `created`/`updated` en esa subida (esa información ya la calcula `UploadProjectZipUseCase`), o que `GenerateEmbeddingForCodeChunkUseCase` comprobara si el chunk ya tiene un embedding vigente antes de volver a llamar a Gemini.
 
+## La indexación no tolera fallos parciales: un chunk que falla de forma persistente aborta todo el proceso
+
+El bucle de indexación de `IndexProjectEmbeddingsUseCase` recorre los chunks de uno en uno, pero la llamada a `GenerateEmbeddingForCodeChunkUseCase` **no está envuelta en un `try/catch` propio dentro del bucle**. El único `try/catch` rodea el bucle completo, de modo que en cuanto un chunk lanza un error, se rompe la iteración, los chunks restantes **no llegan a procesarse**, el _job_ se marca como `failed` y el error se relanza.
+
+**Qué parte sí está cubierta:** los fallos **transitorios** del proveedor de embeddings (Gemini vía Genkit) ya se gestionan en un nivel más bajo. `GenkitEmbeddingGenerator` envuelve la llamada en `retryWithBackoff`, que reintenta ante errores `503 UNAVAILABLE` y `429 RESOURCE_EXHAUSTED` (hasta 4 intentos totales, con backoff exponencial de 1s, 2s y 4s). Si un chunk falla de forma puntual pero se recupera en uno de esos reintentos, `generateEmbedding` devuelve el embedding con normalidad y, desde el punto de vista del bucle de indexación, ese chunk **nunca falló**: la indexación continúa sin verse afectada. Este es el caso más habitual (picos de carga o límites de cuota momentáneos del proveedor) y queda absorbido de forma transparente.
+
+**Lo que queda como limitación:** si el error es **muy persistente** —un fallo transitorio que sigue dándose tras agotar los reintentos, o directamente un error **no transitorio** (por ejemplo una API key inválida o un chunk problemático), que no se reintenta y sale a la primera— ese único chunk **sí aborta toda la indexación del proyecto**. El _job_ queda en estado `failed` con un `processedChunks` parcial, y al relanzar la indexación se vuelve a recorrer la lista completa desde el principio (por la falta de indexación incremental descrita más arriba), rehaciendo trabajo ya hecho. El campo `failedChunks` del _job_, que en un diseño tolerante a fallos serviría para contar los chunks caídos y seguir adelante, en la práctica solo puede valer 0 o 1, porque el primer fallo termina el proceso.
+
+**Matiz importante — los embeddings ya generados no se pierden ni se quedan colgados:** conviene aclarar qué ocurre con los chunks que sí se procesaron con éxito antes del fallo. `GenerateEmbeddingForCodeChunkUseCase` guarda cada embedding de forma **individual e inmediata** (llamada a Gemini → borrado del embedding previo de ese chunk → guardado del nuevo), sin ninguna transacción que envuelva el bucle completo. Por tanto, esos embeddings **quedan persistidos en la base de datos**: no se revierten ni se pierden por el fallo posterior. Lo que realmente se desperdicia es el **tiempo y la cuota de Gemini** invertidos, porque al volver a lanzar la indexación se recorren todos los chunks otra vez y, para cada uno —incluidos los que ya tenían un embedding válido—, el caso de uso **borra el embedding antiguo y lo regenera desde cero** (`deleteByCodeChunkId` seguido de `save`). Dicho de otro modo: los embeddings antiguos no se quedan huérfanos ni duplicados, sino que se **borran para actualizarse** en cada pasada; la pérdida es de trabajo repetido (coste y latencia), no de datos.
+
+**Qué se ha mitigado y qué sigue pendiente:** el _re-disparo_ de la indexación ya es seguro. En la Fase 11.14 se añadió un **guard de idempotencia**: `IndexProjectEmbeddingsUseCase` rechaza con un `409` (`IndexingAlreadyInProgressError`) cualquier petición nueva mientras haya un _job_ en estado `processing`, y la ruta `POST /projects/:id/index` se protegió además con un rate limit por usuario. Esto elimina el riesgo de **indexaciones concurrentes solapadas** (un doble clic o un reintento ya no lanzan una segunda pasada que pise los mismos embeddings). Lo que **no** resuelve ese guard es la limitación descrita en esta sección: la falta de **tolerancia a fallos parciales** dentro de una misma pasada. Un único chunk que falle de forma persistente sigue abortando toda la indexación; el guard solo garantiza que la siguiente pasada (ya con el _job_ en `failed`, no en `processing`) se pueda relanzar limpia y sin solaparse.
+
+La mejora natural sería mover el `try/catch` **dentro** del bucle, de modo que un chunk fallido incremente `failedChunks` y no interrumpa el resto: la indexación terminaría procesando todos los chunks que sí funcionan y reflejaría los caídos en el _job_ (por ejemplo con un estado `completed_with_errors`), en lugar de perder toda la pasada por un único chunk problemático.
+
 ## Faltan índices en las claves foráneas de la base de datos
 
 En PostgreSQL, declarar una `FOREIGN KEY` **no** crea automáticamente un índice sobre esa columna (solo se indexan solas las `PRIMARY KEY` y las columnas `UNIQUE`). En las migraciones actuales, las tablas `project_files` y `code_chunks` no tienen un índice explícito sobre sus claves foráneas:
@@ -1231,9 +1240,9 @@ En PostgreSQL, declarar una `FOREIGN KEY` **no** crea automáticamente un índic
 - `code_chunks(project_id)`
 - `code_chunks(project_file_id)`
 
-Justo sobre esas columnas se apoyan las consultas más frecuentes del sistema: `findByProjectId`, `deleteByProjectFileId` y el `JOIN` de la búsqueda semántica del RAG. Sin índice, PostgreSQL recorre la tabla entera (*seq scan*) en cada consulta, y ese coste crece linealmente con el tamaño total de la base de datos.
+Justo sobre esas columnas se apoyan las consultas más frecuentes del sistema: `findByProjectId`, `deleteByProjectFileId` y el `JOIN` de la búsqueda semántica del RAG. Sin índice, PostgreSQL recorre la tabla entera (_seq scan_) en cada consulta, y ese coste crece linealmente con el tamaño total de la base de datos.
 
-**Por qué se ha dejado como limitación consciente y no se ha implementado:** el uso previsto de DevMind en el contexto de este TFM es muy pequeño (del orden de 3 usuarios y 2 proyectos por usuario). Con ese volumen, la diferencia entre un *seq scan* y una búsqueda por índice es imperceptible, y añadir los índices no aportaría ninguna mejora observable. Se documenta aquí de forma explícita para dejar claro que es una decisión tomada con conocimiento del *trade-off*, no un descuido.
+**Por qué se ha dejado como limitación consciente y no se ha implementado:** el uso previsto de DevMind en el contexto de este TFM es muy pequeño (del orden de 3 usuarios y 2 proyectos por usuario). Con ese volumen, la diferencia entre un _seq scan_ y una búsqueda por índice es imperceptible, y añadir los índices no aportaría ninguna mejora observable. Se documenta aquí de forma explícita para dejar claro que es una decisión tomada con conocimiento del _trade-off_, no un descuido.
 
 La mejora natural, si el proyecto creciera a un volumen real de datos, sería añadir una migración con `CREATE INDEX` sobre esas tres columnas. Cabe destacar que en la tabla de embeddings (`code_chunk_embeddings`) sí se crearon índices manualmente, por lo que el patrón ya está aplicado donde el rendimiento importaba desde el principio.
 
@@ -1268,13 +1277,21 @@ La mejora natural sería extraer un `ProjectFilesSynchronizer` que encapsule ese
 
 **Estado actual:** la búsqueda de similitud del RAG (`embedding <-> $consulta`) hace un KNN **exacto**: recorre todos los embeddings del proyecto para ordenarlos por distancia. Es correcto y suficiente para el volumen actual, pero su coste crece linealmente con el número de embeddings.
 
-**Mejora:** crear un índice aproximado **HNSW** (o `IVFFlat`) sobre la columna `code_chunk_embeddings.embedding`. El *trade-off* es claro: la búsqueda pasa a ser **aproximada** (una precisión ligeramente menor) a cambio de una velocidad mucho mayor cuando hay muchos vectores. Es la mejora de rendimiento natural del RAG si el sistema creciera a proyectos grandes o a muchos proyectos.
+**Mejora:** crear un índice aproximado **HNSW** (o `IVFFlat`) sobre la columna `code_chunk_embeddings.embedding`. El _trade-off_ es claro: la búsqueda pasa a ser **aproximada** (una precisión ligeramente menor) a cambio de una velocidad mucho mayor cuando hay muchos vectores. Es la mejora de rendimiento natural del RAG si el sistema creciera a proyectos grandes o a muchos proyectos.
 
 ### Transacciones en la subida de ZIP
 
 **Estado actual:** `UploadProjectZipUseCase` realiza muchas escrituras encadenadas (crear, actualizar y borrar `ProjectFiles` y sus `CodeChunks`) **sin envolverlas en una transacción**. Si una de esas operaciones falla a mitad del proceso, la base de datos puede quedar en un estado inconsistente: parte de los archivos sincronizados y parte no.
 
-**Mejora:** envolver todo el proceso de sincronización en una **transacción de PostgreSQL** (`BEGIN` / `COMMIT` / `ROLLBACK`), de forma que la subida sea **atómica**: o se aplica entera o no se aplica nada. Requiere que los repositorios implicados puedan recibir un cliente o contexto de transacción compartido, en lugar de usar cada uno una conexión suelta del pool.
+**Cuál es el riesgo real (y por qué es bajo):** conviene ponerlo en contexto. La operación más propensa a fallar —la llamada al proveedor externo de embeddings (Gemini)— **ya no forma parte de este flujo**: desde que la indexación es una acción manual e independiente (Fase 11.11), la subida solo hace escrituras en la propia base de datos y genera chunks con código propio (lógica pura). Por tanto, un fallo a mitad de la subida solo podría venir de un problema de la **base de datos en sí** (caída de conexión, timeout, pool agotado, deadlock), que a la escala de este proyecto es poco frecuente.
+
+Además, la sincronización es **en gran medida idempotente**: al basarse en `path` + `hash`, volver a subir el mismo ZIP recupera la mayoría de estados parciales (los archivos sin cambios se saltan, y los que quedaron a medias se vuelven a sincronizar).
+
+**El caso que NO se autorrepara (matiz honesto):** hay una excepción concreta. En la ruta de actualización, primero se actualiza el archivo con su nuevo `hash` y **después** se regeneran sus chunks. Si el fallo ocurre justo entre ambos pasos, el archivo queda con el `hash` nuevo pero con los chunks viejos o borrados; y como al resubir el ZIP el `hash` ya coincide, se considera "sin cambios" y **no se regeneran los chunks**, dejando ese archivo inconsistente de forma permanente. Es poco probable, pero es un hueco de correctitud real y es justo el tipo de caso que una transacción evitaría.
+
+**Por qué se deja como mejora futura:** el riesgo es bajo (no hay proveedor externo en el flujo) y la mayoría de fallos se recuperan al resubir, mientras que implementar transacciones es el cambio de mayor coste y riesgo del proyecto, porque toca los repositorios y la gestión de conexiones. Se ha priorizado la estabilidad y se documenta como deuda técnica consciente.
+
+**Mejora:** envolver todo el proceso de sincronización en una **transacción de PostgreSQL** (`BEGIN` / `COMMIT` / `ROLLBACK`), de forma que la subida sea **atómica**: o se aplica entera o no se aplica nada. Requiere introducir un ejecutor de transacciones (puerto en aplicación + adaptador en infraestructura) y que los repositorios implicados —además del caso de uso anidado de generación de chunks— puedan compartir una única conexión de transacción en lugar de usar cada uno una conexión suelta del pool.
 
 ### Observabilidad: logs estructurados y métricas
 
@@ -1282,18 +1299,16 @@ La mejora natural sería extraer un `ProjectFilesSynchronizer` que encapsule ese
 
 **Mejora:** introducir un **logger estructurado** (por ejemplo `pino`) con niveles configurables por entorno, sustituir los `console.*` por ese logger, y exponer métricas mediante Prometheus u OpenTelemetry. Con eso se podría, por ejemplo, monitorizar cuántas indexaciones fallan por errores de Gemini o cuánto tarda de media generar un embedding.
 
-
 ### Despliegue y CI/CD
 
 **Estado actual:** el proyecto se ejecuta en local y solo existe un `docker-compose.yml` para levantar PostgreSQL. No hay un despliegue real de la API ni un pipeline de integración continua.
 
 **Mejora:** contenerizar la API con un `Dockerfile`, y desplegarla en un PaaS (Railway, Render, Fly.io…) o con un `docker-compose` completo, usando una base de datos PostgreSQL gestionada y variables de entorno seguras. Además, montar un pipeline de **CI/CD** que ejecute `npm run typecheck` y `npm test` en cada push, de modo que ningún cambio que rompa los tests o el tipado llegue a la rama principal.
 
-
-___________________________________________
-
+---
 
 ## Preguntas generales
+
 ¿Qué problema resuelve DevMind?
 ¿Por qué hiciste este proyecto?
 ¿Qué diferencia hay entre DevMind y preguntarle directamente a ChatGPT?

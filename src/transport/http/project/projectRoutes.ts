@@ -10,6 +10,7 @@ import { asyncHandler } from "../../http/middleware/asyncHandler";
 import {
   askRateLimitMiddleware,
   uploadRateLimitMiddleware,
+  indexRateLimitMiddleware,
 } from "../../http/middleware/userRateLimitMiddleware";
 import { container } from "../../../container/container";
 import { env } from "../../../infrastructure/config/env";
@@ -54,6 +55,7 @@ projectRoutes.post(
 projectRoutes.post(
   "/:id/index",
   authMiddleware,
+  indexRateLimitMiddleware,
   asyncHandler((req, res) => projectController.index(req, res)),
 );
 projectRoutes.get(

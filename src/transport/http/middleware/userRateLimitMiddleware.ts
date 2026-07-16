@@ -32,3 +32,7 @@ export const askRateLimitMiddleware = createUserRateLimitMiddleware(
 export const uploadRateLimitMiddleware = createUserRateLimitMiddleware(
   env.uploadRateLimit,
 );
+
+export const indexRateLimitMiddleware = createUserRateLimitMiddleware(
+  env.indexRateLimit,
+);

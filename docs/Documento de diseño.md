@@ -8155,6 +8155,58 @@ La tercera parte prevista —extraer un `ProjectFilesSynchronizer` que encapsule
 
 ---
 
+## Fase 11.14 — Protección de la ruta de indexación: guard de "ya en proceso" (409) y rate limit
+
+### Problema
+
+`POST /projects/:id/index` era, paradójicamente, la ruta **más cara del sistema** y la única de las costosas **sin ninguna protección**:
+
+```txt
+/ask     → 1 llamada a Gemini por petición.            → tenía rate limit (11.7)
+/upload  → 0 llamadas a Gemini (solo escribe en BD).   → tenía rate limit (11.7)
+/index   → N llamadas a Gemini (una por CADA chunk,    → SIN protección
+           y además no incremental: reindexar borra
+           y regenera todos los embeddings).
+```
+
+La idea inicial era que "solo se indexa cuando al usuario se le ha notificado que ya puede", pero eso es una condición de la **UI**, no una barrera del backend: nada impedía hacer `POST /:id/index` directamente (curl, un doble clic o un reintento del cliente). Peor aún, `IndexProjectEmbeddingsUseCase` **no comprobaba si ya había un job en `processing`** antes de arrancar: repetir la petición lanzaba **indexaciones solapadas** sobre el mismo proyecto, todas haciendo `deleteByCodeChunkId` + `save` sobre los mismos embeddings a la vez (carreras de datos, cuota de Gemini quemada por duplicado y el contador del job pisándose entre ejecuciones).
+
+### Cambio realizado
+
+Se atacan las dos capas del problema, la raíz y la defensa en profundidad:
+
+```txt
+1. Guard de idempotencia en el caso de uso (ataca la raíz del solapamiento)
+   - Nuevo error de dominio IndexingAlreadyInProgressError (extiende AppError, 409).
+   - IndexProjectEmbeddingsUseCase.execute: tras findByProjectId, si el job
+     existente está en estado "processing", lanza el error ANTES de tocar nada
+     (no reinicia el job ni genera embeddings). El errorMiddleware ya mapea
+     AppError → su statusCode, así que el cliente recibe un 409 Conflict limpio.
+
+2. Rate limit por usuario en la ruta (defensa en profundidad)
+   - env.ts → env.indexRateLimit (5 / 60 min), configurable por
+     INDEX_RATE_LIMIT_MAX / INDEX_RATE_LIMIT_WINDOW_MINUTES.
+   - userRateLimitMiddleware.ts → indexRateLimitMiddleware, reutilizando la
+     misma factory createUserRateLimitMiddleware de la Fase 11.7 (limita por
+     userId con fallback a IP, y se desactiva en tests).
+   - projectRoutes.ts → /:id/index pasa a: authMiddleware → indexRateLimitMiddleware.
+```
+
+Los dos mecanismos son complementarios: el **guard de estado** evita el solapamiento y el desperdicio de forma inmediata (es la corrección de fondo), y el **rate limit** da una capa extra frente a scripts que martilleen el endpoint fuera de una indexación en curso.
+
+### Verificación
+
+Se añadió un test unitario al caso de uso que arranca con un job ya en `processing` y comprueba que `execute` lanza `IndexingAlreadyInProgressError` **sin** generar ningún embedding ni actualizar el job (`updatedJobs` queda vacío). Junto con los tests previos (índice completo y fallo a mitad), el caso de uso queda en 4 tests en verde.
+
+```txt
+✅ /index protegido con guard de idempotencia (409 si ya hay indexación en curso)
+✅ /index protegido con rate limit por usuario (INDEX_RATE_LIMIT_*, 5 / 60 min)
+✅ Se evita el solapamiento de indexaciones concurrentes sobre el mismo proyecto
+✅ Nuevo test del guard + suite del caso de uso en verde; typecheck limpio
+```
+
+---
+
 ## Verificación de la Fase 11
 
 Tras aplicar todos los cambios:
@@ -8173,4 +8225,4 @@ openapi.yaml       → YAML válido tras la sincronización
 
 ## Estado tras la Fase 11
 
-La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.
+La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. A ellas se suma la Fase 11.14, que protege la ruta de indexación —la más cara del sistema— con un guard de idempotencia (**409 si ya hay una indexación en curso**, evitando pasadas solapadas) y un rate limit por usuario. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.

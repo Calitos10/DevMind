@@ -300,6 +300,68 @@ describe("IndexProjectEmbeddingsUseCase", () => {
       errorMessage: "Gemini quota exceeded",
     });
   });
+  it("throws IndexingAlreadyInProgressError when a job is already processing", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const codeChunkRepository = new FakeCodeChunkRepository();
+    const projectIndexingJobRepository = new FakeProjectIndexingJobRepository();
+    const generateEmbeddingForCodeChunkUseCase =
+      new FakeGenerateEmbeddingForCodeChunkUseCase();
+    const idGenerator = new FakeIdGenerator("indexing-job-1");
+
+    await projectRepository.save({
+      id: "project-1",
+      ownerId: "user-1",
+      name: "DevMind",
+      description: "AI project assistant",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    // Ya existe una indexación en curso para el proyecto.
+    await projectIndexingJobRepository.save({
+      id: "indexing-job-1",
+      projectId: "project-1",
+      status: "processing",
+      totalChunks: 10,
+      processedChunks: 3,
+      failedChunks: 0,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    codeChunkRepository.codeChunks = [
+      {
+        id: "chunk-1",
+        projectId: "project-1",
+        projectFileId: "project-file-1",
+        content: "export function registerUser() {}",
+        startLine: 1,
+        endLine: 1,
+        index: 0,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ];
+
+    const useCase = new IndexProjectEmbeddingsUseCase(
+      projectRepository,
+      codeChunkRepository,
+      projectIndexingJobRepository,
+      generateEmbeddingForCodeChunkUseCase,
+      idGenerator,
+    );
+
+    await expect(
+      useCase.execute({
+        projectId: "project-1",
+        ownerId: "user-1",
+      }),
+    ).rejects.toThrow("Indexing is already in progress for this project");
+
+    // No se toca nada: ni se generan embeddings ni se reinicia el job en curso.
+    expect(generateEmbeddingForCodeChunkUseCase.generatedCodeChunkIds).toEqual(
+      [],
+    );
+    expect(projectIndexingJobRepository.updatedJobs).toEqual([]);
+  });
   it("throws ProjectNotFoundError when the project does not belong to the user", async () => {
     const projectRepository = new FakeProjectRepository();
     const codeChunkRepository = new FakeCodeChunkRepository();

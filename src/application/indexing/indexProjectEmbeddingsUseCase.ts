@@ -5,6 +5,7 @@ import type { ProjectIndexingJobRepository } from "../../domain/repository/proje
 import type { IdGenerator } from "../ports/idGeneratorPort";
 import type { Delay } from "../ports/delay";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
+import { IndexingAlreadyInProgressError } from "../../shared/errors/indexingAlreadyInProgressError";
 
 type IndexProjectEmbeddingsUseCaseInput = {
   projectId: string;
@@ -40,6 +41,14 @@ export class IndexProjectEmbeddingsUseCase {
 
     const existingIndexingJob =
       await this.projectIndexingJobRepository.findByProjectId(input.projectId);
+
+    // Guard de idempotencia: si ya hay una indexación en curso para este
+    // proyecto, se rechaza en lugar de arrancar una segunda pasada solapada.
+    // Sin esto, un doble clic o un reintento del cliente lanzaría indexaciones
+    // concurrentes que borran y regeneran los mismos embeddings a la vez.
+    if (existingIndexingJob?.status === "processing") {
+      throw new IndexingAlreadyInProgressError();
+    }
 
     const indexingJob = existingIndexingJob
       ? await this.projectIndexingJobRepository.update({

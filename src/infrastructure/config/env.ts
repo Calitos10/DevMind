@@ -34,6 +34,13 @@ export const env = {
     max: Number(process.env.UPLOAD_RATE_LIMIT_MAX) || 10,
     windowMinutes: Number(process.env.UPLOAD_RATE_LIMIT_WINDOW_MINUTES) || 60,
   },
+  // Límite para /index: es la ruta más cara del sistema (una llamada a Gemini
+  // por cada chunk del proyecto). Se limita de forma estricta por usuario, como
+  // defensa en profundidad además del guard de "ya en proceso" del caso de uso.
+  indexRateLimit: {
+    max: Number(process.env.INDEX_RATE_LIMIT_MAX) || 5,
+    windowMinutes: Number(process.env.INDEX_RATE_LIMIT_WINDOW_MINUTES) || 60,
+  },
   indexing: {
     delayBetweenChunksMs:
       Number(process.env.INDEXING_DELAY_BETWEEN_CHUNKS_MS) || 1000,
