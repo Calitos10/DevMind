@@ -8723,3 +8723,34 @@ Al ampliar la interfaz `UserRepository`, el adaptador **en memoria** `InMemoryUs
 ## Resultado
 
 DevMind permite ahora **usar el producto sin registrarse**: `POST /auth/guest` entrega automáticamente un token de invitado con el que se puede subir un ZIP y hablar con la IA, reutilizando **todo** el pipeline existente. Los datos del invitado son temporales (caducan y se limpian con `purge-guests`, apoyándose en las cascadas de la base de datos), mientras que registrarse conserva el "plus" de permanencia. La feature resultó **prácticamente aditiva**: no se tocó la entidad `User` ni ningún caso de uso del pipeline; solo se añadieron piezas nuevas y dos métodos al repositorio de usuarios. El backend del modo invitado queda listo para que, en la fase de frontend, la primera pantalla sea el producto y no un formulario de registro.
+
+---
+
+# Corrección — Reintentos y error tipado (503) en la generación de respuestas del RAG
+
+## Problema detectado
+
+Al probar el `/ask`, se observó que si el proveedor de IA (Gemini) devolvía un `503` (modelo saturado: _"This model is currently experiencing high demand"_), el endpoint respondía con un **`500 Internal server error` genérico** y en el log aparecía el `GenkitError` crudo. El fallo del proveedor **no estaba ni tolerado ni tipado** en el paso de generar la respuesta.
+
+## Causa
+
+La Fase 11.12 había añadido **reintentos con backoff** y **traducción a un `503` tipado** (`EmbeddingProviderUnavailableError`) al **generador de embeddings**, pero **no al generador de respuestas** (`GenkitAnswerGenerator`). Es decir, el paso de "generar la respuesta" del RAG no tenía ni reintentos ni error de dominio; cualquier fallo de Gemini ahí caía en el `500` genérico. Era exactamente el hueco **[ERR-3]** señalado en la revisión de seguridad (resiliencia inconsistente entre los dos caminos que llaman a Gemini).
+
+## Solución (con TDD)
+
+- Se **extrajo `isTransientGenkitError`** (la detección de errores transitorios `503`/`429` del proveedor) a un módulo compartido `infrastructure/genkit/genkitErrors.ts`, reutilizado ahora por **ambos** generadores (elimina la duplicación).
+- Nuevo error de dominio **`AnswerProviderUnavailableError`** (`503`) con un mensaje claro para el usuario: _"El asistente de IA no está disponible ahora mismo. Vuelve a intentarlo en unos segundos."_
+- **`GenkitAnswerGenerator`** envuelve ahora la llamada a Gemini en `retryWithBackoff` (reintenta ante `503`/`429` con backoff exponencial) y, si tras los reintentos el fallo sigue siendo transitorio, lanza `AnswerProviderUnavailableError` (`503`); cualquier otro error se relanza tal cual. Es el mismo patrón que ya usaba el generador de embeddings, ahora aplicado de forma simétrica.
+- **TDD:** se añadieron al test del generador de respuestas los casos "reintenta y luego acierta", "lanza `AnswerProviderUnavailableError` si el proveedor sigue fallando" y "relanza los errores no transitorios sin reintentar". Primero en rojo (el generador aún no reintentaba ni traducía), luego en verde tras la implementación.
+- **OpenAPI:** se documenta el `503` en `/projects/{id}/ask` (puede venir tanto del embedding de la pregunta como de la generación de la respuesta) y también en `/projects/{id}/index` (que ya lo devolvía desde la Fase 11.12 pero no estaba documentado).
+
+## Verificación
+
+```txt
+✅ npm run typecheck → sin errores
+✅ npm test → 176/176 tests en verde (44 archivos), incluidos los tres nuevos
+   casos de reintento/503 del generador de respuestas
+✅ openapi.yaml válido tras documentar el 503 en /ask y /index
+```
+
+Con esto, ante un fallo transitorio de Gemini al preguntar, DevMind **reintenta** y, si el problema persiste, devuelve un **`503` con un mensaje claro** en lugar de un `500` genérico. Los dos caminos del RAG que dependen de Gemini (embedding de la pregunta y generación de la respuesta) quedan protegidos de la misma forma.

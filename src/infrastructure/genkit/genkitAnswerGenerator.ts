@@ -1,5 +1,10 @@
 import type { AnswerGenerator } from "../../application/ports/answerGenerator";
 import type { SimilarCodeChunk } from "../../domain/repositories/codeChunkEmbeddingRepository";
+import type { Delay } from "../../application/ports/delay";
+import { TimeoutDelay } from "../timeDelayAdapter/timeoutDelay";
+import { retryWithBackoff } from "../retry/retryWithBackoff";
+import { isTransientGenkitError } from "./genkitErrors";
+import { AnswerProviderUnavailableError } from "../../shared/errors/answerProviderUnavailableError";
 import { ai } from "./ai";
 
 type GenkitLikeAi = {
@@ -11,6 +16,9 @@ type GenkitLikeAi = {
 export class GenkitAnswerGenerator implements AnswerGenerator {
   constructor(
     private readonly aiClient: GenkitLikeAi = ai as unknown as GenkitLikeAi,
+    private readonly delay: Delay = new TimeoutDelay(),
+    private readonly maxRetries: number = 3,
+    private readonly baseDelayMs: number = 1000,
   ) {}
 
   async generateAnswer(input: {
@@ -19,18 +27,37 @@ export class GenkitAnswerGenerator implements AnswerGenerator {
   }): Promise<string> {
     const prompt = this.buildPrompt(input.question, input.contextChunks);
 
-    const response = await this.aiClient.generate({
-      prompt,
-    });
+    try {
+      // Se reintenta ante fallos transitorios del proveedor (503/429), igual
+      // que en la generación de embeddings.
+      const response = await retryWithBackoff(
+        () => this.aiClient.generate({ prompt }),
+        {
+          maxRetries: this.maxRetries,
+          baseDelayMs: this.baseDelayMs,
+          delay: this.delay,
+          isRetryable: isTransientGenkitError,
+        },
+      );
 
-    const answer =
-      typeof response.text === "function" ? response.text() : response.text;
+      const answer =
+        typeof response.text === "function" ? response.text() : response.text;
 
-    if (!answer.trim()) {
-      return "No he podido generar una respuesta con el contexto disponible.";
+      if (!answer.trim()) {
+        return "No he podido generar una respuesta con el contexto disponible.";
+      }
+
+      return answer;
+    } catch (error) {
+      // Si tras los reintentos sigue siendo un fallo transitorio del proveedor,
+      // se traduce al error de dominio tipado (503). Cualquier otro error se
+      // relanza tal cual (reintentarlo no lo arreglaría).
+      if (isTransientGenkitError(error)) {
+        throw new AnswerProviderUnavailableError(error);
+      }
+
+      throw error;
     }
-
-    return answer;
   }
 
   private buildPrompt(

@@ -721,6 +721,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          description: El proveedor de embeddings (Gemini) no está disponible tras agotar los reintentos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /projects/{id}/indexing-status:
     get:
@@ -830,6 +836,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           description: Demasiadas peticiones (límite de rate limit de preguntas por usuario autenticado superado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: El proveedor de IA (Gemini) no está disponible tras agotar los reintentos (al generar el embedding de la pregunta o la respuesta)
           content:
             application/json:
               schema:
