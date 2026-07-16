@@ -15,6 +15,7 @@ const authController = new AuthController(
   container.registerUserUseCase,
   container.loginUserUseCase,
   container.getCurrentUserUseCase,
+  container.createGuestUserUseCase,
 );
 
 authRoutes.post(
@@ -35,4 +36,10 @@ authRoutes.get(
   "/me",
   authMiddleware,
   asyncHandler((req, res, next) => authController.me(req, res)),
+);
+
+authRoutes.post(
+  "/guest",
+  authRateLimitMiddleware,
+  asyncHandler((req, res, next) => authController.guest(req, res)),
 );

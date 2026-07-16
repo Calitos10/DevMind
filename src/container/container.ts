@@ -2,6 +2,7 @@
 import { GetCurrentUserUseCase } from "../application/auth/getCurrentUserUseCase";
 import { LoginUserUseCase } from "../application/auth/loginUserUseCase";
 import { RegisterUserUseCase } from "../application/auth/registerUserUseCase";
+import { CreateGuestUserUseCase } from "../application/auth/createGuestUserUseCase";
 import { BcryptPasswordHasher } from "../infrastructure/authAdapter/bcryptPasswordHasher";
 import { JwtTokenService } from "../infrastructure/authAdapter/jwtTokenService";
 import { CryptoIdGenerator } from "../infrastructure/authAdapter/cryptoIdGenerator";
@@ -184,6 +185,14 @@ export const container = {
 
   getCurrentUserUseCase: new GetCurrentUserUseCase(userRepository),
 
+  createGuestUserUseCase: new CreateGuestUserUseCase(
+    userRepository,
+    passwordHasher,
+    tokenService,
+    idGenerator,
+    env.guest.ttlHours,
+  ),
+
   createProjectUseCase: new CreateProjectUseCase(
     projectRepository,
     idGenerator,
@@ -231,6 +240,7 @@ getProjectIndexingStatusUseCase : new GetProjectIndexingStatusUseCase(
   answerGenerator,
   conversationRepository,
   idGenerator,
+  userRepository,
   env.rag.maxDistance,
 ),
 

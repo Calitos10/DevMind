@@ -48,12 +48,19 @@ Estas son las decisiones que aplicamos como orquestador antes de delegar la ejec
 3. **TTL configurable** por variable de entorno (`GUEST_TTL_HOURS`, por defecto 24 h).
 4. **Rate limit por IP** obligatorio en `POST /auth/guest`.
 5. **Metodología TDD estricta**, igual que en la Fase 12 (test en rojo → implementación → verde).
+6. **Sin límite de número de proyectos para el invitado** (por ahora). Decisión consciente: ver el bloque destacado más abajo. **Debe recalcarse en la documentación de la Fase 13.**
+
+### Decisión consciente a recalcar en la Fase 13: NO limitar el número de proyectos del invitado
+
+Se valoró limitar al invitado a **un solo proyecto** como diferenciador frente al registrado. **Se decidió no hacerlo (por ahora)**, y esta decisión debe quedar explicada en el documento de diseño de la Fase 13, con el siguiente razonamiento:
+
+- **Podríamos haberlo hecho**, pero **implicaba bastante más** y del tipo "malo": era el **primer punto donde la lógica de invitado se cuela en el pipeline compartido**. El modo invitado, sin el límite, es **100 % aditivo** (endpoint, caso de uso y columnas nuevas; no toca ningún caso de uso existente). El límite rompe esa propiedad.
+- En concreto habría obligado a: (1) **tocar `CreateProjectUseCase`** (una pieza ya funcionando y testeada), (2) darle una forma de **saber si el usuario es invitado** —o cargar el usuario desde el repositorio (dependencia + consulta extra), o meter `is_guest` en el JWT (cambiar el contrato del token, el `authMiddleware` y los tipos—, (3) **un error nuevo** (`403`) con su mapeo, y (4) **tests del nuevo comportamiento**.
+- **No aporta valor imprescindible:** el objetivo (probar sin registrarse) se cumple igual; la temporalidad de los datos ya la da el **TTL + limpieza**; y el abuso caro (Gemini) ya está frenado por los **rate limits** existentes. Crear proyectos de más solo genera filas vacías baratas que además se limpian por caducidad.
+- **Queda como mejora futura contenida:** si se quisiera el diferenciador, se añade después (idealmente metiendo `is_guest` en el JWT, que además le sirve al frontend para saber si mostrar el aviso de "regístrate para guardar").
 
 ### Decisiones aún abiertas (a confirmar al implementar)
 
-- **A) ¿Límite de proyectos para el invitado?**
-  - Opción 1: **sin límite** (más simple, no toca `CreateProjectUseCase`). ← *recomendado para empezar*
-  - Opción 2: **máximo 1 proyecto** (diferenciador más claro, pero añade una comprobación de `is_guest` en el caso de uso de crear proyecto).
 - **B) ¿El invitado ve sus datos si recarga la página?** Es una decisión de **frontend** (reutilizar el token guardado vs. pedir uno nuevo cada visita); **no bloquea el backend**. Se decide al hacer el frontend.
 - **C) `password_hash` del invitado:** guardar el hash de un valor **aleatorio e inservible** (el invitado nunca hace login), para que nadie pueda entrar como él. ← *recomendado*
 
@@ -130,6 +137,7 @@ Lógica:
 - **OpenAPI:** documentar `POST /auth/guest` y su respuesta.
 - **`.env.example`:** añadir `GUEST_TTL_HOURS` (y variables de rate limit si se crean).
 - **Documento de diseño:** nueva **Fase 13 — Modo invitado**, redactada paso a paso al estilo de la Fase 12 (primero el test, en rojo, luego la implementación y el porqué), y **reconciliar el índice de fases** (punto 2): marcar la Fase 12 como implementada e insertar la 13.
+  - **Recalcar como decisión consciente** el punto de **no limitar el número de proyectos del invitado** (ver el bloque destacado de la sección 4): explicar que se podría haber hecho, pero que implicaba tocar `CreateProjectUseCase`, saber `is_guest`, un error nuevo y sus tests, rompiendo el carácter puramente aditivo de la feature; y que no aportaba valor imprescindible. Queda como mejora futura.
 
 ## 8. Seguridad (tener en cuenta)
 

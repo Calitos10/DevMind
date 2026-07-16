@@ -45,6 +45,11 @@ export const env = {
     delayBetweenChunksMs:
       Number(process.env.INDEXING_DELAY_BETWEEN_CHUNKS_MS) || 1000,
   },
+  // Modo invitado: cuántas horas vive un usuario invitado antes de que la
+  // limpieza lo elimine (con sus datos, por cascada).
+  guest: {
+    ttlHours: Number(process.env.GUEST_TTL_HOURS) || 0.0166667,
+  },
   // Reintentos ante fallos transitorios del proveedor de embeddings (503/429).
   embedding: {
     maxRetries: Number(process.env.EMBEDDING_MAX_RETRIES) || 3,

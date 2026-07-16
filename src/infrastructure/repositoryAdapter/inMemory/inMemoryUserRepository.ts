@@ -16,4 +16,17 @@ export class InMemoryUserRepository implements UserRepository {
     this.users.push(user);
     return user;
   }
+
+  async isGuest(_userId: string): Promise<boolean> {
+    return false;
+  }
+
+  async saveGuest(user: User, _expiresAt: Date): Promise<User> {
+    this.users.push(user);
+    return user;
+  }
+
+  async deleteExpiredGuests(_now: Date): Promise<number> {
+    return 0;
+  }
 }

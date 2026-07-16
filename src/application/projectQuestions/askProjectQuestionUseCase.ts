@@ -6,6 +6,7 @@ import type {
 import type { EmbeddingGenerator } from "../ports/embeddingGenerator";
 import type { AnswerGenerator } from "../ports/answerGenerator";
 import type { ConversationRepository } from "../../domain/repositories/conversationRepository";
+import type { UserRepository } from "../../domain/repositories/userRepository";
 import type { IdGenerator } from "../ports/idGenerator";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { QuestionIsRequiredError } from "../../shared/errors/questionIsRequiredError";
@@ -33,6 +34,7 @@ export class AskProjectQuestionUseCase {
     private readonly answerGenerator: AnswerGenerator,
     private readonly conversationRepository: ConversationRepository,
     private readonly idGenerator: IdGenerator,
+    private readonly userRepository: UserRepository,
     // Distancia máxima aceptada para considerar un chunk relevante.
     // Por defecto no filtra (Infinity); el valor real se inyecta desde el container.
     private readonly maxDistance: number = Number.POSITIVE_INFINITY,
@@ -92,14 +94,20 @@ export class AskProjectQuestionUseCase {
       sources = this.buildSources(relevantChunks);
     }
 
-    await this.conversationRepository.save({
-      id: this.idGenerator.generate(),
-      projectId: input.projectId,
-      question: input.question,
-      answer,
-      sources,
-      createdAt: new Date(),
-    });
+    // El historial de conversaciones es un "plus" del usuario registrado: a los
+    // invitados se les responde igual, pero no se les guarda el intercambio.
+    const isGuest = await this.userRepository.isGuest(input.userId);
+
+    if (!isGuest) {
+      await this.conversationRepository.save({
+        id: this.idGenerator.generate(),
+        projectId: input.projectId,
+        question: input.question,
+        answer,
+        sources,
+        createdAt: new Date(),
+      });
+    }
 
     return {
       answer,

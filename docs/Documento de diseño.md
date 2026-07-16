@@ -66,12 +66,13 @@ Fase 8  → Genkit + PostgreSQL/pgvector, embeddings y búsqueda semántica
 Fase 9  → IA/RAG: preguntas sobre el proyecto
 Fase 10 → Indexación asíncrona y robusta
 Fase 11 → Refactor, endurecimiento y mejoras técnicas
+Fase 12 → Historial de conversaciones (guardar preguntas/respuestas por proyecto)
+Fase 13 → Modo invitado (onboarding sin registro: usar la API sin credenciales)
 
 FASES PENDIENTES (no implementadas aún)
-Fase 12 → Historial de conversaciones (guardar preguntas/respuestas por proyecto)
-Fase 13 → Mejoras de RAG (mejor prompt, más sources, ranking, límites de contexto)
 Fase 14 → Frontend (interfaz para subir el ZIP y preguntar al proyecto)
-Fase 15 → Deploy (backend, PostgreSQL y variables de entorno en producción)
+Fase 15 → Mejoras de RAG (mejor prompt, más sources, ranking, límites de contexto)
+Fase 16 → Deploy (backend, PostgreSQL y variables de entorno en producción)
 ```
 
 ---
@@ -8592,3 +8593,133 @@ Se añadió al `openapi.yaml` la operación `GET /projects/{id}/history` y el sc
 DevMind guarda ahora, por cada proyecto, el historial de preguntas y respuestas, y lo expone en `GET /projects/:id/history`. La implementación reutiliza por completo la arquitectura existente (puertos/adaptadores, comprobación de propiedad, fakes de test) y no altera el comportamiento externo del endpoint de preguntas. El único cambio de firma —añadir el repositorio de conversaciones y el generador de ids a `AskProjectQuestionUseCase`— era imprescindible para que el guardado viva donde le corresponde. Con esta fase, el "premio" de registrarse queda completo: proyectos, archivos, chunks y embeddings persistentes **y** el historial de conversaciones.
 
 Como cierre, esta fase deja constancia de un **uso responsable y dirigido de la IA** como herramienta de desarrollo: el objetivo, las decisiones de diseño, la metodología (TDD) y la validación fueron mías; la IA aceleró la ejecución dentro de esos límites. El resultado —una feature coherente con la arquitectura, cubierta por tests y documentada— no proviene de delegar el criterio, sino de **orquestar la herramienta con buenos fundamentos**: un objetivo claro, decisiones argumentadas y una verificación exigente.
+
+---
+
+# Fase 13 — Modo invitado (onboarding sin registro)
+
+## Objetivo de la fase
+
+El objetivo nace de un requisito de experiencia de usuario: **lo primero que se ve al abrir DevMind no debe ser una pantalla de login/registro**, sino el producto listo para probarse. Para que un visitante pueda **subir un ZIP y hablar con la IA sin registrarse**, se añade un **modo invitado**. Registrarse pasa a ser el "plus" (proyectos e historial permanentes, cubiertos por las fases anteriores).
+
+El reto de fondo es que **toda la API exige una credencial**: cada ruta protegida verifica un token JWT y todo recurso cuelga de un `ownerId` que es clave foránea a `users`. No existe un camino anónimo. La solución elegida respeta esa arquitectura en lugar de romperla: **un invitado es un usuario temporal real, creado automáticamente**, al que se le entrega un token legítimo. Así reutiliza todo el pipeline (subida, chunks, embeddings, RAG, historial) exactamente igual que un registrado.
+
+### Aclaración importante sobre "persistencia"
+
+La diferencia invitado/registrado **no es "guardar vs no guardar"**: para que el RAG funcione, el ZIP del invitado **tiene que** trocearse, generar embeddings y guardarse en PostgreSQL. El invitado **también escribe en las mismas tablas** durante su sesión. La diferencia real es:
+
+- **Registrado → permanente y recuperable** (puede volver a iniciar sesión y ver sus datos).
+- **Invitado → temporal y no recuperable** (sus datos se guardan durante la sesión pero caducan y se limpian; y al no tener credenciales, al volver empieza de cero).
+
+## Decisiones de diseño (tomadas como orquestador antes de empezar)
+
+1. **El invitado es un usuario temporal real** en la misma tabla `users`, marcado con `is_guest` y `expires_at`. No se crean tablas aparte ni se hace `ownerId` _nullable_.
+2. **Opción B — limpieza diferida:** se implementa la lógica de borrado de invitados caducados (con su test), pero **no** se monta un _scheduler_ automático. La limpieza se ejecuta con un script (`npm run purge-guests`) y programarla queda como tarea de operaciones / mejora futura.
+3. **`password_hash` inservible:** el invitado nunca inicia sesión con contraseña; se guarda el hash de un valor aleatorio, para que nadie pueda autenticarse como él.
+4. **TTL configurable** por entorno (`GUEST_TTL_HOURS`, por defecto 24 h).
+5. **Rate limit por IP** en el endpoint público de invitado.
+
+### Decisión consciente: NO limitar el número de proyectos del invitado
+
+Se valoró **limitar al invitado a un solo proyecto** como diferenciador frente al registrado. **Se decidió deliberadamente no hacerlo (por ahora)**, y conviene dejar constancia del razonamiento:
+
+- **Se podría haber hecho, pero implicaba bastante más** y del tipo "malo": era el **primer punto donde la lógica de invitado se colaría en el pipeline compartido**. Sin ese límite, el modo invitado es **prácticamente aditivo** y no toca ningún caso de uso existente; el límite rompe esa propiedad.
+- En concreto, habría obligado a: (1) **tocar `CreateProjectUseCase`** (una pieza ya funcionando y testeada), (2) darle una forma de **saber si el usuario es invitado** —cargar el usuario desde el repositorio (dependencia + consulta extra) o meter `is_guest` en el JWT (cambiar el contrato del token, el `authMiddleware` y los tipos)—, (3) **un error nuevo** (`403`) con su mapeo, y (4) **tests del nuevo comportamiento**.
+- **No aporta valor imprescindible:** el objetivo (probar sin registrarse) se cumple igual; la temporalidad de los datos ya la garantizan el **TTL + la limpieza**; y el abuso caro (llamadas a Gemini) ya está frenado por los **rate limits** existentes. Crear proyectos de más solo genera filas vacías baratas que además se limpian por caducidad.
+- **Queda como mejora futura contenida:** si se quisiera el diferenciador, se añade después, idealmente metiendo `is_guest` en el JWT (que además le serviría al frontend para saber cuándo mostrar el aviso de "regístrate para guardar").
+
+### Refinamiento sobre el plan inicial: marcas de invitado solo en infraestructura
+
+El plan preveía extender la **entidad de dominio `User`** con los campos `isGuest`/`expiresAt`. Al implementar se optó por una vía **aún más aditiva y de menor riesgo**: como **ninguna lógica de dominio necesita saber si un usuario es invitado** (consecuencia directa de la decisión anterior de no limitar proyectos), las marcas de invitado se mantienen **solo en la capa de infraestructura**. En la práctica, esto significó **no tocar la entidad `User` ni sus consumidores**: la persistencia de invitado y su limpieza se resuelven con **dos métodos nuevos en el repositorio** (`saveGuest`, `deleteExpiredGuests`), sin modificar `save`, `toDomain` ni la entidad. Menos superficie tocada, mismo resultado.
+
+## Metodología
+
+Igual que en la Fase 12, **TDD estricto**: para cada pieza con lógica se escribió **primero el test**, se comprobó que **falla (rojo)** y solo entonces se implementó lo mínimo para ponerlo **en verde**. El orden de los pasos siguientes es el orden real de construcción.
+
+## Paso a paso
+
+### 1. Migración: columnas de invitado en `users`
+
+`009_add_guest_columns_to_users.sql` añade `is_guest BOOLEAN NOT NULL DEFAULT false` y `expires_at TIMESTAMP NULL`, más un índice sobre `(is_guest, expires_at)` para que la limpieza sea eficiente. Los valores por defecto hacen que **los usuarios registrados existentes sigan funcionando sin cambios**.
+
+### 2. Puerto `UserRepository` y su fake
+
+Se amplía la interfaz `UserRepository` con dos métodos (los existentes no se tocan):
+
+- `saveGuest(user, expiresAt)`: guarda un usuario con `is_guest = true` y su caducidad.
+- `deleteExpiredGuests(now)`: borra los invitados caducados y devuelve cuántos.
+
+Se actualiza `FakeUserRepository` para implementarlos en memoria (registrando la caducidad de cada invitado), de modo que los casos de uso se puedan testear sin base de datos.
+
+### 3. `CreateGuestUserUseCase` (TDD)
+
+**Primero el test (rojo).** `createGuestUserUseCase.test.ts` afirma que `execute()` crea un invitado (`name = "Invitado"`, `email = guest-<id>@devmind.local`), lo guarda con `saveGuest`, calcula `expiresAt = createdAt + TTL` y devuelve `{ accessToken, user }`. Un detalle clave para un test **determinista sin reloj**: como `createdAt` y `expiresAt` derivan del mismo `now`, el test comprueba que `expiresAt - createdAt === TTL` exactamente. Al no existir el caso de uso, el test falla al importarlo.
+
+**Después la implementación (verde).** `CreateGuestUserUseCase` genera el id, compone el email, hashea un valor aleatorio como contraseña inservible, calcula la caducidad, crea un `User` normal (con 5 argumentos: **sin tocar la entidad**), lo persiste con `saveGuest` y firma un JWT con `TokenService`, reutilizando los puertos que ya existían.
+
+### 4. Infraestructura: `PostgresUserRepository` + test de BD
+
+Se implementan los dos métodos nuevos en el adaptador Postgres (`saveGuest` con un `INSERT` que fija `is_guest = true` y `expires_at`; `deleteExpiredGuests` con un `DELETE ... WHERE is_guest AND expires_at < $1` que devuelve `rowCount`). Los métodos existentes (`save`, `findByEmail`, `findById`, `toDomain`) **no se modifican**.
+
+El test de BD comprueba, contra PostgreSQL real, que: un invitado caducado se borra y **se lleva su proyecto por cascada**; y que un invitado **no** caducado y un usuario **registrado** sobreviven a la limpieza. Los dos tests previos del repositorio de usuarios siguen pasando, confirmando que los cambios no rompen nada.
+
+### 5. Capa HTTP + configuración + wiring
+
+- **Endpoint público** `POST /auth/guest`, sin body, protegido con **rate limit por IP** (`authRateLimitMiddleware`), que responde `201` con `{ accessToken, user }`.
+- Método `guest` en `AuthController`; ruta en `authRoutes.ts`.
+- **Config:** `env.guest.ttlHours` (`GUEST_TTL_HOURS`, 24 h por defecto).
+- **Container:** se instancia `CreateGuestUserUseCase` reutilizando `userRepository`, `passwordHasher`, `tokenService`, `idGenerator` y el TTL.
+
+### 6. Test de integración (extremo a extremo)
+
+`guestEndpoint.test.ts` valida el flujo completo contra la base de datos real: `POST /auth/guest` → `201` con token; con ese token, el invitado **crea un proyecto, sube un ZIP y pregunta a la IA** (todo el pipeline). Además comprueba el **aislamiento**: un invitado **no** puede ver el proyecto de otro (`404`).
+
+### 7. Limpieza de invitados: script
+
+`scripts/purge-guests.ts` (ejecutable con `npm run purge-guests`, al estilo de `run-migrations`) llama a `deleteExpiredGuests(new Date())`. La cascada de la base de datos se encarga de borrar proyectos, archivos, chunks, embeddings, jobs e historial del invitado. El _scheduler_ automático se deja diferido (decisión de la opción B).
+
+**Cómo encajan la caducidad y el borrado (aclaración):** el TTL (`GUEST_TTL_HOURS`, 24 h) **no borra nada por sí solo**. Al crear el invitado solo se guarda su `expires_at` como una **marca** de cuándo pasa a ser borrable; el borrado real lo hace el script (`DELETE ... WHERE is_guest AND expires_at < ahora`), que es el **disparador**. Es decir, la caducidad define **a quién** se borra y el script define **cuándo** se ejecuta (hoy a mano; en el futuro podría lanzarlo un cron). Ese criterio de caducidad es justo lo que hace el borrado **seguro**: nunca elimina a un invitado recién creado que podría estar usándose en ese momento. Conviene matizar además que el hecho de que un invitado **"empiece de cero al volver" no depende de esta limpieza**, sino de que no tiene credenciales para volver a iniciar sesión; el script es solo **higiene de la base de datos** (evitar que se acumulen invitados viejos).
+
+### 8. Documentación del contrato (OpenAPI)
+
+Se añade la operación `POST /auth/guest` al `openapi.yaml`, para que el contrato refleje la nueva puerta de entrada (y sirva para generar el frontend).
+
+### 9. Refinamiento: el historial de conversaciones es solo para registrados
+
+Al probar el modo invitado se detectó que, aunque un invitado **puede hablar con la IA**, se le estaba **guardando el historial** de conversaciones igual que a un registrado. Eso contradice el diseño: el historial (Fase 12) es un **"plus" del usuario registrado**; el invitado debe poder preguntar, pero **sin que se le persista** el historial (además, sus datos son temporales de todos modos).
+
+**Cómo saber si quien pregunta es invitado.** El `AskProjectQuestionUseCase` solo recibe el `userId`, no si es invitado. Se valoraron dos vías: (a) meter `is_guest` en el JWT y leerlo en el flujo, o (b) una consulta al repositorio. Se eligió **(b)** para **no tocar la capa de autenticación** (token, `authMiddleware`, tipos), a cambio de una pequeña consulta indexada por pregunta (coste trivial frente al resto de operaciones del `/ask`).
+
+**TDD.** Primero el test (rojo): en `askProjectQuestionUseCase.test.ts` se añadió un caso "responde pero **no** guarda historial para invitados", que falla porque el caso de uso guardaba siempre. Después la implementación (verde):
+
+- Se añadió `isGuest(userId): Promise<boolean>` al puerto `UserRepository` (y a sus tres implementaciones: Postgres, fake e in-memory). En Postgres es un `SELECT is_guest FROM users WHERE id = $1`.
+- El `AskProjectQuestionUseCase` recibe ahora el `UserRepository` y **solo guarda el intercambio si el usuario no es invitado**. La respuesta al usuario **no cambia**: el invitado recibe su respuesta igual; simplemente no se persiste.
+
+El test de integración del invitado se amplió para comprobarlo de extremo a extremo: tras preguntar, `GET /projects/:id/history` del invitado devuelve `[]`. Con esto, la tabla "Invitado vs Registrado" de esta fase (historial: No / Sí) queda respaldada por el comportamiento real.
+
+## Seguridad
+
+- **Los tokens no se pueden falsificar:** el `authMiddleware` verifica la **firma** del JWT con `JWT_SECRET` (que solo conoce el servidor) y el algoritmo fijado a `HS256`. Un token inventado o manipulado no pasa la verificación. El invitado recibe un token **legítimo emitido por el servidor**, no uno que él fabrique.
+- **El riesgo real no es la falsificación, sino el abuso del endpoint público** (pedir muchos invitados): se mitiga con **rate limit por IP** + el **TTL/limpieza** + los **límites de tamaño de ZIP** ya existentes.
+- **Aislamiento por usuario:** cada invitado es su propio usuario; la autorización por `ownerId` (tomado del token) + `findByIdAndOwnerId` garantiza que no ve datos de otros (verificado en el test de integración).
+
+## Nota sobre código heredado
+
+Al ampliar la interfaz `UserRepository`, el adaptador **en memoria** `InMemoryUserRepository` —que es **código muerto** (nadie lo usa; solo aparece comentado en el container, ya señalado en la revisión de arquitectura)— dejaba de compilar. Para no salir del alcance de esta fase ni borrar archivos sin decisión previa, se le añadieron implementaciones mínimas de los dos métodos nuevos, dejando su eventual eliminación como limpieza pendiente.
+
+## Verificación
+
+```txt
+✅ TDD respetado: cada pieza con lógica tuvo su test en rojo antes de implementarse
+✅ npm run typecheck → sin errores
+✅ npm test → 173/173 tests en verde (44 archivos), incluidos:
+   - createGuestUserUseCase.test.ts (unit, con fakes)
+   - los tests de saveGuest y deleteExpiredGuests de PostgresUserRepository (BD real, con cascada)
+   - guestEndpoint.test.ts (integración: el invitado usa todo el pipeline, sin historial + aislamiento)
+   - el caso "no guarda historial para invitados" en askProjectQuestionUseCase.test.ts
+✅ openapi.yaml válido tras añadir POST /auth/guest
+```
+
+## Resultado
+
+DevMind permite ahora **usar el producto sin registrarse**: `POST /auth/guest` entrega automáticamente un token de invitado con el que se puede subir un ZIP y hablar con la IA, reutilizando **todo** el pipeline existente. Los datos del invitado son temporales (caducan y se limpian con `purge-guests`, apoyándose en las cascadas de la base de datos), mientras que registrarse conserva el "plus" de permanencia. La feature resultó **prácticamente aditiva**: no se tocó la entidad `User` ni ningún caso de uso del pipeline; solo se añadieron piezas nuevas y dos métodos al repositorio de usuarios. El backend del modo invitado queda listo para que, en la fase de frontend, la primera pantalla sea el producto y no un formulario de registro.

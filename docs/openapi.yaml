@@ -436,6 +436,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /auth/guest:
+    post:
+      tags:
+        - Auth
+      summary: Crear una sesión de invitado (sin registro)
+      description: >
+        Crea automáticamente un usuario invitado temporal (sin que el visitante
+        rellene nada) y devuelve un token de acceso, igual que el login. Con ese
+        token el invitado puede usar toda la API (crear proyecto, subir ZIP,
+        preguntar a la IA). Sus datos son temporales: caducan (`GUEST_TTL_HOURS`)
+        y se eliminan con la limpieza de invitados. Endpoint público protegido
+        con rate limit por IP.
+      responses:
+        "201":
+          description: Sesión de invitado creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    $ref: "#/components/schemas/User"
+        "429":
+          description: Demasiadas peticiones (límite de rate limit de creación de invitados por IP superado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /projects:
     post:
       tags:

@@ -4,6 +4,7 @@ import { Request, Response } from "express";
 import { GetCurrentUserUseCase } from "../../../application/auth/getCurrentUserUseCase";
 import { LoginUserUseCase } from "../../../application/auth/loginUserUseCase";
 import { RegisterUserUseCase } from "../../../application/auth/registerUserUseCase";
+import { CreateGuestUserUseCase } from "../../../application/auth/createGuestUserUseCase";
 import { AuthenticatedRequest } from "../types/authenticatedRequest";
 
 export class AuthController {
@@ -11,6 +12,7 @@ export class AuthController {
     private readonly registerUserUseCase: RegisterUserUseCase,
     private readonly loginUserUseCase: LoginUserUseCase,
     private readonly getCurrentUserUseCase: GetCurrentUserUseCase,
+    private readonly createGuestUserUseCase: CreateGuestUserUseCase,
   ) {}
 
   async register(req: Request, res: Response): Promise<Response> {
@@ -36,6 +38,12 @@ export class AuthController {
     });
 
     return res.status(200).json(result);
+  }
+
+  async guest(_req: Request, res: Response): Promise<Response> {
+    const result = await this.createGuestUserUseCase.execute();
+
+    return res.status(201).json(result);
   }
 
   async me(req: Request, res: Response): Promise<Response> {

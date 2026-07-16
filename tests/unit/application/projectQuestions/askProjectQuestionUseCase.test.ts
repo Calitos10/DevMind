@@ -8,6 +8,7 @@ import { FakeConversationRepository } from "../../../fakes/fakeConversationRepos
 import { FakeEmbeddingGenerator } from "../../../fakes/fakeEmbeddingGenerator";
 import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
+import { FakeUserRepository } from "../../../fakes/fakeUserRepository";
 
 class FakeAnswerGenerator implements AnswerGenerator {
   public receivedInputs: Array<{
@@ -33,6 +34,7 @@ describe("AskProjectQuestionUseCase", () => {
     const answerGenerator = new FakeAnswerGenerator();
     const conversationRepository = new FakeConversationRepository();
     const idGenerator = new FakeIdGenerator("conversation-1");
+    const userRepository = new FakeUserRepository();
 
     codeChunkEmbeddingRepository.similarCodeChunks = [
       {
@@ -63,6 +65,7 @@ describe("AskProjectQuestionUseCase", () => {
       answerGenerator,
       conversationRepository,
       idGenerator,
+      userRepository,
     );
 
     const result = await useCase.execute({
@@ -125,6 +128,7 @@ describe("AskProjectQuestionUseCase", () => {
     const answerGenerator = new FakeAnswerGenerator();
     const conversationRepository = new FakeConversationRepository();
     const idGenerator = new FakeIdGenerator("conversation-1");
+    const userRepository = new FakeUserRepository();
 
     projectRepository.projects.push({
       id: "project-1",
@@ -141,6 +145,7 @@ describe("AskProjectQuestionUseCase", () => {
       answerGenerator,
       conversationRepository,
       idGenerator,
+      userRepository,
     );
 
     await expect(
@@ -164,6 +169,7 @@ describe("AskProjectQuestionUseCase", () => {
     const answerGenerator = new FakeAnswerGenerator();
     const conversationRepository = new FakeConversationRepository();
     const idGenerator = new FakeIdGenerator("conversation-1");
+    const userRepository = new FakeUserRepository();
 
     projectRepository.projects.push({
       id: "project-1",
@@ -180,6 +186,7 @@ describe("AskProjectQuestionUseCase", () => {
       answerGenerator,
       conversationRepository,
       idGenerator,
+      userRepository,
     );
 
     await expect(
@@ -202,6 +209,7 @@ describe("AskProjectQuestionUseCase", () => {
     const answerGenerator = new FakeAnswerGenerator();
     const conversationRepository = new FakeConversationRepository();
     const idGenerator = new FakeIdGenerator("conversation-1");
+    const userRepository = new FakeUserRepository();
 
     codeChunkEmbeddingRepository.similarCodeChunks = [];
 
@@ -220,6 +228,7 @@ describe("AskProjectQuestionUseCase", () => {
       answerGenerator,
       conversationRepository,
       idGenerator,
+      userRepository,
     );
 
     const result = await useCase.execute({
@@ -267,6 +276,7 @@ describe("AskProjectQuestionUseCase", () => {
     const answerGenerator = new FakeAnswerGenerator();
     const conversationRepository = new FakeConversationRepository();
     const idGenerator = new FakeIdGenerator("conversation-1");
+    const userRepository = new FakeUserRepository();
 
     codeChunkEmbeddingRepository.similarCodeChunks = [
       {
@@ -308,6 +318,7 @@ describe("AskProjectQuestionUseCase", () => {
       answerGenerator,
       conversationRepository,
       idGenerator,
+      userRepository,
     );
 
     const result = await useCase.execute({
@@ -323,5 +334,73 @@ describe("AskProjectQuestionUseCase", () => {
         endLine: 45,
       },
     ]);
+  });
+
+  it("answers but does not save history for guest users", async () => {
+    const projectRepository = new FakeProjectRepository();
+    const embeddingGenerator = new FakeEmbeddingGenerator();
+    const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
+    const answerGenerator = new FakeAnswerGenerator();
+    const conversationRepository = new FakeConversationRepository();
+    const idGenerator = new FakeIdGenerator("conversation-1");
+    const userRepository = new FakeUserRepository();
+
+    codeChunkEmbeddingRepository.similarCodeChunks = [
+      {
+        codeChunkId: "code-chunk-1",
+        projectId: "project-1",
+        projectFileId: "project-file-1",
+        path: "src/auth/registerUserUseCase.ts",
+        content: "export class RegisterUserUseCase {}",
+        startLine: 10,
+        endLine: 45,
+        index: 0,
+        distance: 0.12,
+      },
+    ];
+
+    projectRepository.projects.push({
+      id: "project-1",
+      ownerId: "guest-1",
+      name: "Proyecto invitado",
+      description: "Prueba sin registro",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+
+    // El usuario que pregunta es un invitado.
+    await userRepository.saveGuest(
+      {
+        id: "guest-1",
+        name: "Invitado",
+        email: "guest-guest-1@devmind.local",
+        passwordHash: "unusable-hash",
+        createdAt: new Date(),
+      },
+      new Date(Date.now() + 60 * 1000),
+    );
+
+    const useCase = new AskProjectQuestionUseCase(
+      projectRepository,
+      embeddingGenerator,
+      codeChunkEmbeddingRepository,
+      answerGenerator,
+      conversationRepository,
+      idGenerator,
+      userRepository,
+    );
+
+    const result = await useCase.execute({
+      projectId: "project-1",
+      userId: "guest-1",
+      question: "¿Dónde se registra un usuario?",
+    });
+
+    // Responde con normalidad...
+    expect(result.answer).toEqual(
+      "El registro de usuario se realiza en RegisterUserUseCase.",
+    );
+
+    // ...pero NO guarda el historial (el historial es un plus del registrado).
+    expect(conversationRepository.entries).toEqual([]);
   });
 });
