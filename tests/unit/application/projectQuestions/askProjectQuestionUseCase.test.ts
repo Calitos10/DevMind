@@ -4,7 +4,9 @@ import type { AnswerGenerator } from "../../../../src/application/ports/answerGe
 import type { SimilarCodeChunk } from "../../../../src/domain/repositories/codeChunkEmbeddingRepository";
 import { AskProjectQuestionUseCase } from "../../../../src/application/projectQuestions/askProjectQuestionUseCase";
 import { FakeCodeChunkEmbeddingRepository } from "../../../fakes/fakeCodeChunkEmbeddingRepository";
+import { FakeConversationRepository } from "../../../fakes/fakeConversationRepository";
 import { FakeEmbeddingGenerator } from "../../../fakes/fakeEmbeddingGenerator";
+import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";
 import { FakeProjectRepository } from "../../../fakes/fakeProjectRepository";
 
 class FakeAnswerGenerator implements AnswerGenerator {
@@ -29,6 +31,8 @@ describe("AskProjectQuestionUseCase", () => {
     const embeddingGenerator = new FakeEmbeddingGenerator();
     const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
     const answerGenerator = new FakeAnswerGenerator();
+    const conversationRepository = new FakeConversationRepository();
+    const idGenerator = new FakeIdGenerator("conversation-1");
 
     codeChunkEmbeddingRepository.similarCodeChunks = [
       {
@@ -57,6 +61,8 @@ describe("AskProjectQuestionUseCase", () => {
       embeddingGenerator,
       codeChunkEmbeddingRepository,
       answerGenerator,
+      conversationRepository,
+      idGenerator,
     );
 
     const result = await useCase.execute({
@@ -94,12 +100,31 @@ describe("AskProjectQuestionUseCase", () => {
         },
       ],
     });
+
+    // El intercambio (pregunta + respuesta + fuentes) se guarda en el historial.
+    expect(conversationRepository.entries).toHaveLength(1);
+    expect(conversationRepository.entries[0]).toMatchObject({
+      id: "conversation-1",
+      projectId: "project-1",
+      question: "¿Dónde se registra un usuario?",
+      answer: "El registro de usuario se realiza en RegisterUserUseCase.",
+      sources: [
+        {
+          path: "src/auth/registerUserUseCase.ts",
+          startLine: 10,
+          endLine: 45,
+        },
+      ],
+    });
+    expect(conversationRepository.entries[0].createdAt).toBeInstanceOf(Date);
   });
   it("does not allow an empty question", async () => {
     const projectRepository = new FakeProjectRepository();
     const embeddingGenerator = new FakeEmbeddingGenerator();
     const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
     const answerGenerator = new FakeAnswerGenerator();
+    const conversationRepository = new FakeConversationRepository();
+    const idGenerator = new FakeIdGenerator("conversation-1");
 
     projectRepository.projects.push({
       id: "project-1",
@@ -114,6 +139,8 @@ describe("AskProjectQuestionUseCase", () => {
       embeddingGenerator,
       codeChunkEmbeddingRepository,
       answerGenerator,
+      conversationRepository,
+      idGenerator,
     );
 
     await expect(
@@ -127,6 +154,7 @@ describe("AskProjectQuestionUseCase", () => {
     expect(embeddingGenerator.receivedTexts).toEqual([]);
     expect(codeChunkEmbeddingRepository.receivedFindSimilarInputs).toEqual([]);
     expect(answerGenerator.receivedInputs).toEqual([]);
+    expect(conversationRepository.entries).toEqual([]);
   });
 
   it("does not allow asking questions about another user's project", async () => {
@@ -134,6 +162,8 @@ describe("AskProjectQuestionUseCase", () => {
     const embeddingGenerator = new FakeEmbeddingGenerator();
     const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
     const answerGenerator = new FakeAnswerGenerator();
+    const conversationRepository = new FakeConversationRepository();
+    const idGenerator = new FakeIdGenerator("conversation-1");
 
     projectRepository.projects.push({
       id: "project-1",
@@ -148,6 +178,8 @@ describe("AskProjectQuestionUseCase", () => {
       embeddingGenerator,
       codeChunkEmbeddingRepository,
       answerGenerator,
+      conversationRepository,
+      idGenerator,
     );
 
     await expect(
@@ -161,12 +193,15 @@ describe("AskProjectQuestionUseCase", () => {
     expect(embeddingGenerator.receivedTexts).toEqual([]);
     expect(codeChunkEmbeddingRepository.receivedFindSimilarInputs).toEqual([]);
     expect(answerGenerator.receivedInputs).toEqual([]);
+    expect(conversationRepository.entries).toEqual([]);
   });
-  it("returns a fallback answer when there are no relevant chunks", async () => {
+  it("returns a fallback answer when there are no relevant chunks and still saves it", async () => {
     const projectRepository = new FakeProjectRepository();
     const embeddingGenerator = new FakeEmbeddingGenerator();
     const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
     const answerGenerator = new FakeAnswerGenerator();
+    const conversationRepository = new FakeConversationRepository();
+    const idGenerator = new FakeIdGenerator("conversation-1");
 
     codeChunkEmbeddingRepository.similarCodeChunks = [];
 
@@ -183,6 +218,8 @@ describe("AskProjectQuestionUseCase", () => {
       embeddingGenerator,
       codeChunkEmbeddingRepository,
       answerGenerator,
+      conversationRepository,
+      idGenerator,
     );
 
     const result = await useCase.execute({
@@ -210,6 +247,17 @@ describe("AskProjectQuestionUseCase", () => {
         "No tengo suficiente información del proyecto para responder a esa pregunta.",
       sources: [],
     });
+
+    // Aunque no haya información, el intercambio se guarda igualmente en el historial.
+    expect(conversationRepository.entries).toHaveLength(1);
+    expect(conversationRepository.entries[0]).toMatchObject({
+      id: "conversation-1",
+      projectId: "project-1",
+      question: "¿Dónde se registra un usuario?",
+      answer:
+        "No tengo suficiente información del proyecto para responder a esa pregunta.",
+      sources: [],
+    });
   });
 
   it("does not return duplicated sources", async () => {
@@ -217,6 +265,8 @@ describe("AskProjectQuestionUseCase", () => {
     const embeddingGenerator = new FakeEmbeddingGenerator();
     const codeChunkEmbeddingRepository = new FakeCodeChunkEmbeddingRepository();
     const answerGenerator = new FakeAnswerGenerator();
+    const conversationRepository = new FakeConversationRepository();
+    const idGenerator = new FakeIdGenerator("conversation-1");
 
     codeChunkEmbeddingRepository.similarCodeChunks = [
       {
@@ -256,6 +306,8 @@ describe("AskProjectQuestionUseCase", () => {
       embeddingGenerator,
       codeChunkEmbeddingRepository,
       answerGenerator,
+      conversationRepository,
+      idGenerator,
     );
 
     const result = await useCase.execute({

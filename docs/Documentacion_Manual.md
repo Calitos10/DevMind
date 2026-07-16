@@ -4209,6 +4209,84 @@ Qué hemos cerrado en Fase 10
 ✅ /ask responde con fuentes de código real
 
 
+# FASE 12 Historial de conversacion
+
+## FASE 12.1
+
+Empezamos con la Fase 12.1: guardar el intercambio generado por /ask, siguiendo TDD:
+
+1. Escribir el test.
+2. Ejecutarlo y comprobar que falla.
+3. Implementar lo mínimo.
+4. Comprobar que pasa.
+5. Refactorizar.
+
+No empezaremos todavía por la migración ni por PostgreSQL. Primero vamos a definir mediante un test qué debe hacer AskProjectQuestionUseCase. Así respetamos la metodología acordada y evitamos inventar nombres o adaptar código que quizá ya haya cambiado.
+
+Nuestro objetivo en este primer ciclo es:
+
+Pregunta con contexto relevante
+↓
+se genera la respuesta
+↓
+se construyen las fuentes
+↓
+se guarda una ConversationEntry
+
+Todavía no implementaremos el guardado real. Primero prepararemos los contratos mínimos y escribiremos el test que deberá fallar.
+
+Creamos la entidad ConversationEntry.
+
+Qué representa
+
+Cada objeto será un intercambio completo:
+
+ConversationEntry
+├── id
+├── projectId
+├── question
+├── answer
+├── sources
+└── createdAt
+
+No añadimos userId porque el propietario se obtiene a través del proyecto:
+
+ConversationEntry
+↓ projectId
+Project
+↓ ownerId
+User
+
+Ahora Creamos el puerto del repositorio.
+
+Aunque en este primer ciclo solo utilizaremos save, incluimos también findByProjectId porque forma parte del contrato que necesitaremos para consultar el historial
+
+Ahora vamos a crear el fake para los test.
+
+Este fake no usa PostgreSQL. Solo guarda entradas en un array para que el test pueda comprobar qué intentó guardar el caso de uso.
+
+Ahora vamos a añadir un generador de ID falso al test en askProjectQuestionUseCase.test.ts
+
+El puerto IdGenerator actual utiliza el método generate(), igual que en los casos de uso de embeddings existentes.
+
+Ahora vamos a Preparar el constructor sin guardar todavía.
+
+Ahora vamos a Actualizar la construcción del caso de uso en el test.
+
+Una vez hecho todo, debemos probar el test, este fallara en rojo porque :
+
+El test exige guardar el intercambio
+↓
+el caso de uso todavía no lo guarda
+↓
+el test falla por el motivo correcto
+
+Una vez que falle nos ponemos con la implementacion.
+
+
+
+
+
 
 
 

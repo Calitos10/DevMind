@@ -28,6 +28,7 @@ const projectController = new ProjectController(
   container.indexProjectEmbeddingsUseCase,
   container.getProjectIndexingStatusUseCase,
   container.askProjectQuestionUseCase,
+  container.getProjectConversationHistoryUseCase,
 );
 
 const upload = multer({
@@ -70,6 +71,12 @@ projectRoutes.post(
   askRateLimitMiddleware,
   validateBody(askProjectQuestionSchema),
   asyncHandler((req, res) => projectController.ask(req, res)),
+);
+
+projectRoutes.get(
+  "/:id/history",
+  authMiddleware,
+  asyncHandler((req, res) => projectController.history(req, res)),
 );
 
 projectRoutes.get(

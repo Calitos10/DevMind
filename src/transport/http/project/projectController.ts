@@ -12,6 +12,7 @@ import { UploadProjectZipUseCase } from "../../../application/uploadZip/uploadPr
 import { IndexProjectEmbeddingsUseCase } from "../../../application/indexing/indexProjectEmbeddingsUseCase";
 import { GetProjectIndexingStatusUseCase } from "../../../application/indexing/getProjectIndexingStatusUseCase";
 import { AskProjectQuestionUseCase } from "../../../application/projectQuestions/askProjectQuestionUseCase";
+import { GetProjectConversationHistoryUseCase } from "../../../application/projectQuestions/getProjectConversationHistoryUseCase";
 
 export class ProjectController {
   constructor(
@@ -23,6 +24,7 @@ export class ProjectController {
     private readonly indexProjectEmbeddingsUseCase: IndexProjectEmbeddingsUseCase,
     private readonly getProjectIndexingStatusUseCase: GetProjectIndexingStatusUseCase,
     private readonly askProjectQuestionUseCase: AskProjectQuestionUseCase,
+    private readonly getProjectConversationHistoryUseCase: GetProjectConversationHistoryUseCase,
   ) {}
 
   async create(req: Request, res: Response) {
@@ -111,6 +113,16 @@ export class ProjectController {
       projectId: authenticatedReq.params.id as string,
       userId: authenticatedReq.user.userId,
       question: authenticatedReq.body.question,
+    });
+
+    return res.status(200).json(result);
+  }
+  async history(req: Request, res: Response) {
+    const authenticatedReq = req as AuthenticatedRequest;
+
+    const result = await this.getProjectConversationHistoryUseCase.execute({
+      projectId: authenticatedReq.params.id as string,
+      userId: authenticatedReq.user.userId,
     });
 
     return res.status(200).json(result);

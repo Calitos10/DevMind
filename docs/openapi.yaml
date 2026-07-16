@@ -227,6 +227,49 @@ components:
         - answer
         - sources
 
+    ConversationEntry:
+      type: object
+      description: Una entrada del historial de conversaciones de un proyecto (una pregunta con su respuesta).
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        question:
+          type: string
+          example: ¿Dónde se registra un usuario?
+        answer:
+          type: string
+          example: El registro de usuario se realiza en RegisterUserUseCase.
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+                example: src/auth/registerUserUseCase.ts
+              startLine:
+                type: integer
+                example: 10
+              endLine:
+                type: integer
+                example: 45
+            required:
+              - path
+              - startLine
+              - endLine
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - question
+        - answer
+        - sources
+        - createdAt
+
 paths:
   /health:
     get:
@@ -755,6 +798,48 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           description: Demasiadas peticiones (límite de rate limit de preguntas por usuario autenticado superado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /projects/{id}/history:
+    get:
+      tags:
+        - Project Questions
+      summary: Consultar el historial de conversaciones de un proyecto
+      description: >
+        Devuelve el historial de preguntas y respuestas realizadas en el
+        proyecto, ordenado cronológicamente (más antiguo primero). Cada entrada
+        incluye la pregunta del usuario, la respuesta de la IA y las fuentes
+        usadas. Se guarda una entrada por cada pregunta, incluidas aquellas en
+        las que no hubo información suficiente para responder.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: project-uuid
+      responses:
+        "200":
+          description: Historial de conversaciones del proyecto
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConversationEntry"
+        "401":
+          description: Token ausente o inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Proyecto no encontrado o no pertenece al usuario autenticado
           content:
             application/json:
               schema:

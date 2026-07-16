@@ -1200,7 +1200,85 @@ Los datos que llegan por HTTP se validan en la capa de transporte con **Zod** y 
 
 En la búsqueda semántica no basta con recuperar los chunks "más cercanos": si ninguno es realmente relevante, DevMind responde que no tiene información en lugar de inventar. Para ello se filtra por un **umbral de distancia** configurable (`RAG_MAX_DISTANCE`). Esta decisión prioriza la honestidad de las respuestas sobre responder siempre a toda costa.
 
-# 13. Limitaciones actuales
+# 13. Seguridad y hardening
+
+DevMind se ha construido con la seguridad como preocupación transversal, no como un añadido final. Buena parte del endurecimiento se consolidó de forma deliberada en la Fase 11. Esta sección resume, primero, las **medidas de seguridad ya implementadas** (los puntos fuertes) y, después, los **puntos más débiles y las mejoras pendientes**, para dejar claro qué está protegido y qué queda como trabajo consciente.
+
+## 13.1. Puntos fuertes (medidas ya implementadas)
+
+### Autenticación y JWT
+- Las **contraseñas se guardan como hash bcrypt** (`BcryptPasswordHasher`), nunca en texto plano.
+- El **login no distingue** entre "el email no existe" y "la contraseña es incorrecta": ambos casos devuelven `InvalidCredentialsError`, de modo que no se puede enumerar usuarios probando emails.
+- El **JWT fija el algoritmo `HS256` tanto al firmar como al verificar** (`jwtTokenService.ts`), lo que cierra los ataques clásicos de `alg:none` y de confusión de algoritmo.
+- El token **expira** (`JWT_EXPIRES_IN`, 7 días por defecto) y el **`JWT_SECRET` es obligatorio**: la app se niega a arrancar si falta, sin ningún valor por defecto inseguro.
+- El `authMiddleware` valida correctamente la cabecera `Authorization: Bearer <token>` y traduce cualquier fallo de verificación a un `401` limpio.
+
+### Autorización por usuario y aislamiento de datos
+- **Todos** los casos de uso comprueban la propiedad del recurso mediante `findByIdAndOwnerId` / `deleteByIdAndProjectId` antes de operar. Un usuario no puede acceder, modificar ni borrar proyectos o archivos de otro; el sistema responde `404` (que además no revela si el recurso existe).
+- El **`ownerId`/`userId` se toma siempre del JWT** (`req.user`), nunca de un campo enviado por el cliente en el body, por lo que no se puede suplantar la identidad manipulando la petición.
+- En el **RAG**, la búsqueda de chunks similares está **filtrada por `project_id`** en SQL, y `AskProjectQuestionUseCase` comprueba la propiedad del proyecto **antes** de consultar. No hay posibilidad de mezclar información entre usuarios, y las fuentes devueltas pertenecen siempre al proyecto correcto.
+
+### Persistencia y consultas
+- **Todas las consultas a PostgreSQL están parametrizadas** (`$1`, `$2`, …); no se concatena entrada del usuario en el SQL, por lo que no hay inyección SQL.
+
+### Manejo de errores sin fugas de información
+- El manejador de errores global devuelve un `500` **genérico** ("Internal server error") sin exponer stack traces, ni mensajes internos de PostgreSQL, ni errores crudos de Genkit/Gemini.
+- Los errores de dominio (`AppError`) se traducen a códigos HTTP adecuados: `404` proyecto no encontrado, `401` no autorizado, `400` body inválido o ZIP demasiado grande, `409` indexación ya en curso, `503` proveedor de embeddings caído.
+
+### Rate limiting
+- Existe rate limit en **auth** (por IP) y en **`/ask`, `/upload` e `/index`** (por usuario autenticado), todos configurables por variables de entorno. Esto evita que un usuario sature Gemini con muchas preguntas o indexaciones, o martillee la subida de ZIPs.
+
+### Subida de ZIP
+- El endpoint está protegido con `authMiddleware` y solo acepta el archivo en el campo correcto (`upload.single("file")`).
+- Hay **límite de tamaño comprimido** (multer, `MAX_ZIP_SIZE_MB`), cuyo exceso se traduce a un `400` claro, y **límite de tamaño descomprimido total** (`MAX_ZIP_UNCOMPRESSED_SIZE_MB`), comprobado **antes** de descomprimir, lo que mitiga los _zip bombs_ por tamaño.
+- Se ignoran carpetas irrelevantes (`node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `docs`) y se descartan archivos binarios **por extensión y por presencia de byte nulo** (` `).
+- Un detalle importante de diseño: DevMind **nunca escribe los archivos del ZIP a disco**. Usa `multer.memoryStorage()` y procesa el ZIP en memoria, guardando `path` y `content` como texto en la base de datos. Por eso **no existe path traversal al sistema de archivos**: aunque una entrada del ZIP contenga `../`, ese path es solo metadato en BD y nunca se usa para una operación de escritura en disco.
+
+### Cabeceras, CORS y configuración
+- La app aplica **`helmet`** (cabeceras de seguridad), **CORS con origen configurable** (`CORS_ORIGIN`) y `express.json()` (con su límite de tamaño de body por defecto).
+- Las variables sensibles (`JWT_SECRET`, `GEMINI_API_KEY`, `DATABASE_URL`) son **obligatorias** y la app falla de forma explícita si faltan.
+- El **`.env` está ignorado por git** y el `.env.example` contiene solo _placeholders_ (`change_me`, `tu_api_key`), sin ninguna clave real en el repositorio.
+
+### Concurrencia en la indexación
+- La indexación tiene un **guard de idempotencia**: rechaza con `409` una nueva petición si ya hay un job en estado `processing` para ese proyecto, evitando indexaciones solapadas que se pisen los mismos embeddings.
+
+## 13.2. Puntos más débiles y mejoras pendientes
+
+Ninguno de estos puntos es una vulnerabilidad crítica ni explotable de forma remota por un atacante no autenticado; son sobre todo cuestiones de **robustez y defensa en profundidad**. Se ordenan por prioridad aproximada.
+
+### Prioridad media
+
+- **Sin límite del número de archivos del ZIP.** Se controla el tamaño comprimido y el descomprimido total, pero no la **cantidad de entradas**. Un ZIP con muchísimos archivos diminutos pasa el control de tamaño (total ínfimo) y provoca una gran cantidad de iteraciones, inserciones en BD y generaciones de chunks. Es un vector de DoS (mitigado en parte por el rate limit de subida). *Mejora:* rechazar si el número de entradas supera un máximo configurable.
+
+- **Un ZIP corrupto o un archivo que no sea ZIP devuelve un `500` genérico** en vez de un `400`. `adm-zip` lanza al construirse o al leer una entrada inválida, y ese error no se captura en el extractor, por lo que sube al manejador global como error de servidor. No rompe la app, pero es una respuesta poco precisa para un input inválido esperable. *Mejora:* capturar la extracción y traducirla a un error de dominio `400`.
+
+- **Los archivos de secretos dentro del ZIP no se filtran.** Un `.env`, `.pem`, `.key`, `id_rsa`, etc. no está en carpeta ignorada, no es binario y no tiene byte nulo, así que se considera relevante: se guarda en BD, se chunkea, se genera su embedding y **su contenido se envía a la API de Gemini**, quedando además buscable vía RAG. No es una fuga entre usuarios (es el propio proyecto del usuario), pero sí una exposición de datos sensibles a un tercero. *Mejora:* lista negra por nombre/extensión (`.env*`, `.pem`, `.key`, `.p12`, `id_rsa`, `.crt`).
+
+### Prioridad baja
+
+- **Falta longitud máxima en los campos de texto.** `question`, `name` y `description` validan un mínimo pero no un máximo con Zod. El abuso está acotado por el límite de tamaño de body de `express.json()` (~100 kB por defecto), pero una pregunta muy larga igual se embebe y se envía a Gemini. *Mejora:* añadir `.max()` razonables.
+
+- **El generador de RESPUESTAS del RAG no tiene reintentos ni traducción de error.** El camino de embeddings sí reintenta y traduce a `503` (Fase 11.12), pero `GenkitAnswerGenerator` no; si Gemini falla al generar la respuesta de `/ask`, el error sube como `500` genérico (sin filtrar el error crudo, pero con resiliencia inconsistente). *Mejora:* aplicar el mismo patrón de reintentos y `503` limpio.
+
+- **La subida de ZIP no tiene guard de concurrencia ni transacción.** Dos subidas simultáneas al mismo proyecto podrían entrelazar la lógica de sincronización por path + hash y dejar estado inconsistente (la falta de transacción ya está documentada como limitación). Requiere que el propio usuario dispare dos subidas a la vez y está acotado por el rate limit. *Mejora:* guard de "subida en curso" y/o envolver las escrituras en una transacción.
+
+- **Los archivos `.md`/`.mdx` no se ignoran por extensión** (solo se ignora una carpeta `docs`). No es un problema de seguridad, sino de coherencia con la intención de no indexar documentación; hace que se embeban markdown como el `README.md`.
+
+- **El JWT tiene una vida larga (7 días) y no hay revocación** ni refresh. Un token robado es válido durante ese tiempo. Aceptable para el alcance del proyecto.
+
+- **El registro revela si un email ya existe** (`409`), y el login tiene un pequeño _side-channel_ de tiempo (retorna antes de comprobar la contraseña cuando el usuario no existe). Vectores de enumeración menores e inherentes al registro.
+
+- **El `.env.example` está algo desactualizado:** faltan las variables `INDEX_RATE_LIMIT_*` añadidas en la Fase 11.14. Solo afecta a la documentación (tienen valor por defecto en el código).
+
+### Tests de seguridad pendientes
+
+Ya existen tests para usuario no autenticado (`401`), acceso/borrado/subida/pregunta sobre proyecto ajeno (`404`), token inválido, body inválido (`400`), ZIP con carpetas ignoradas, ZIP con binarios y byte nulo, y errores del proveedor de embeddings. Quedan por cubrir, por orden de utilidad: ZIP que supera el límite **descomprimido** (`ZipTooLargeError`), ZIP **corrupto/no-ZIP** (código de estado esperado), ZIP que supera el límite **comprimido**, y el comportamiento ante un ZIP con `.env`/secretos.
+
+### Nota para el despliegue
+
+Al desplegar en producción (no es código de la aplicación): usar un `JWT_SECRET` real, largo y aleatorio; una `GEMINI_API_KEY` real; `NODE_ENV=production`; fijar `CORS_ORIGIN` al dominio real del frontend; y revisar el valor por defecto de 200 MB de ZIP comprimido.
+
+# 14. Limitaciones actuales
 
 ## La indexación de embeddings no es incremental
 
@@ -1265,7 +1343,7 @@ La mejora natural sería extraer un `ProjectFilesSynchronizer` que encapsule ese
 
 **Mejora:** implementar un chunking **sintáctico** que use el AST del lenguaje (por ejemplo con `tree-sitter`) para cortar por unidades semánticas —función, clase, método— en lugar de por líneas. Los chunks resultantes serían más coherentes y mejorarían la relevancia de lo que recupera el RAG. Encaja como una **nueva implementación del puerto `CodeChunker`**, sin tocar el resto del flujo de chunks.
 
-# 14. Mejoras futuras
+# 15. Mejoras futuras
 
 ### Indexación automática en segundo plano
 

@@ -80,6 +80,10 @@ import { AskProjectQuestionUseCase } from "../application/projectQuestions/askPr
 import { GenkitAnswerGenerator } from "../infrastructure/genkit/genkitAnswerGenerator";
 import { TestAnswerGenerator } from "../infrastructure/genkit/testing/testAnswerGenerator";
 
+//IMPORTS PARA LA PARTE DEL HISTORIAL DE CONVERSACIONES
+import { PostgresConversationRepository } from "../infrastructure/repositoryAdapter/postgres/postgresConversationRepository";
+import { GetProjectConversationHistoryUseCase } from "../application/projectQuestions/getProjectConversationHistoryUseCase";
+
 
 
 
@@ -97,6 +101,7 @@ const projectFileRepository = new PostgresProjectFileRepository(postgresPool);
 const codeChunkRepository = new PostgresCodeChunkRepository(postgresPool);
 const projectIndexingJobRepository = new PostgresProjectIndexingJobRepository(postgresPool);
 const codeChunkEmbeddingRepository = new PostgresCodeChunkEmbeddingRepository(postgresPool);
+const conversationRepository = new PostgresConversationRepository(postgresPool);
 
 
 
@@ -224,8 +229,15 @@ getProjectIndexingStatusUseCase : new GetProjectIndexingStatusUseCase(
   embeddingGenerator,
   codeChunkEmbeddingRepository,
   answerGenerator,
+  conversationRepository,
+  idGenerator,
   env.rag.maxDistance,
 ),
+
+  getProjectConversationHistoryUseCase: new GetProjectConversationHistoryUseCase(
+    projectRepository,
+    conversationRepository,
+  ),
 
   tokenService,
 };

@@ -5,6 +5,8 @@ import type {
 } from "../../domain/repositories/codeChunkEmbeddingRepository";
 import type { EmbeddingGenerator } from "../ports/embeddingGenerator";
 import type { AnswerGenerator } from "../ports/answerGenerator";
+import type { ConversationRepository } from "../../domain/repositories/conversationRepository";
+import type { IdGenerator } from "../ports/idGenerator";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { QuestionIsRequiredError } from "../../shared/errors/questionIsRequiredError";
 
@@ -29,6 +31,8 @@ export class AskProjectQuestionUseCase {
     private readonly embeddingGenerator: EmbeddingGenerator,
     private readonly codeChunkEmbeddingRepository: CodeChunkEmbeddingRepository,
     private readonly answerGenerator: AnswerGenerator,
+    private readonly conversationRepository: ConversationRepository,
+    private readonly idGenerator: IdGenerator,
     // Distancia máxima aceptada para considerar un chunk relevante.
     // Por defecto no filtra (Infinity); el valor real se inyecta desde el container.
     private readonly maxDistance: number = Number.POSITIVE_INFINITY,
@@ -69,20 +73,33 @@ export class AskProjectQuestionUseCase {
       (contextChunk) => contextChunk.distance <= this.maxDistance,
     );
 
+    // Se calculan respuesta y fuentes según haya o no chunks relevantes, y a
+    // continuación se guarda el intercambio en el historial en ambos casos
+    // (también cuando no hay información, porque es historial real del usuario).
+    let answer: string;
+    let sources: AskProjectQuestionOutput["sources"];
+
     if (relevantChunks.length === 0) {
-      return {
-        answer:
-          "No tengo suficiente información del proyecto para responder a esa pregunta.",
-        sources: [],
-      };
+      answer =
+        "No tengo suficiente información del proyecto para responder a esa pregunta.";
+      sources = [];
+    } else {
+      answer = await this.answerGenerator.generateAnswer({
+        question: input.question,
+        contextChunks: relevantChunks,
+      });
+
+      sources = this.buildSources(relevantChunks);
     }
 
-    const answer = await this.answerGenerator.generateAnswer({
+    await this.conversationRepository.save({
+      id: this.idGenerator.generate(),
+      projectId: input.projectId,
       question: input.question,
-      contextChunks: relevantChunks,
+      answer,
+      sources,
+      createdAt: new Date(),
     });
-
-    const sources = this.buildSources(relevantChunks);
 
     return {
       answer,

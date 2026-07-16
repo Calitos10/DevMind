@@ -8479,3 +8479,116 @@ openapi.yaml       → YAML válido tras la sincronización
 ## Estado tras la Fase 11
 
 La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. A ellas se suma la Fase 11.14, que protege la ruta de indexación —la más cara del sistema— con un guard de idempotencia (**409 si ya hay una indexación en curso**, evitando pasadas solapadas) y un rate limit por usuario. La Fase 11.15 es una pasada de **consistencia de nombres** (archivos, carpetas y una clase de error) sin impacto de comportamiento, que alinea el proyecto con sus propias convenciones. La Fase 11.16 **cierra dos huecos de cobertura** (test unitario del estado de indexación y test del rate limiting de los cuatro limiters, incluido el de indexación), sustituyendo comprobaciones manuales por tests automatizados. La Fase 11.17 elimina las **dependencias ocultas de `GEMINI_API_KEY` y `JWT_SECRET`** en la carga de la suite, inyectando valores dummy en el entorno de test para que no dependa de un `.env` presente (checkout limpio, CI). Y la Fase 11.18 **elimina la creación manual de archivos** (`POST .../files`) y toda su cadena de código muerto asociada, de modo que los archivos solo entran por la subida de ZIP; se conservan listar, ver y borrar. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.
+
+---
+
+# Fase 12 — Guardado de historial de conversaciones
+
+## Objetivo de la fase
+
+Hasta ahora, cuando un usuario preguntaba a un proyecto (`POST /projects/:id/ask`), la respuesta se generaba y se devolvía, pero **no se guardaba en ningún sitio**: al recargar o volver más tarde, la conversación se había perdido.
+
+Esta fase añade el **historial de conversaciones por proyecto**: cada pregunta que hace el usuario y su respuesta se **persisten**, de modo que el proyecto conserva un registro de todo lo que se le ha preguntado. Es una de las ventajas del usuario registrado frente al futuro modo invitado (que no guardará nada).
+
+Requisitos concretos:
+
+- El historial se guarda **por proyecto** (si un usuario tiene tres proyectos, cada uno tiene su propio historial).
+- De cada intercambio se guarda **la pregunta del usuario y la respuesta de la IA** (más las fuentes que ya devuelve el RAG).
+- Es una funcionalidad **solo para el flujo autenticado**; reutiliza la misma comprobación de propiedad que el resto del sistema.
+
+## Enfoque de esta fase: desarrollo asistido por IA (yo como orquestador)
+
+Esta fase se ha desarrollado de forma deliberada **apoyándome en una herramienta de IA (un asistente de programación)**, asumiendo yo el papel de **orquestador**. La IA no decidió *qué* construir ni *cómo* encajarlo en la arquitectura: ejecutó bajo mi dirección a partir de unos requisitos, unas decisiones de diseño y unas reglas de trabajo que yo había definido previamente.
+
+Mi papel como orquestador consistió en:
+
+- **Definir el objetivo y los requisitos funcionales** con precisión: historial por proyecto, guardar la pregunta y la respuesta, feature exclusiva del usuario registrado.
+- **Tomar todas las decisiones de diseño** (las de la sección siguiente): elegí el modelo de una sola tabla frente al de dos tablas tras sopesar los _trade-offs_, el nombre del endpoint, guardar también las respuestas de "sin información", prescindir de paginación y enlazar la tabla solo por `project_id`. La IA me planteó las alternativas con sus pros y contras; la elección fue mía y razonada.
+- **Imponer la metodología del proyecto:** exigí **TDD estricto** (test en rojo antes de implementar) para mantener la coherencia con el DDD y la arquitectura hexagonal ya establecidos.
+- **Fijar guardarraíles:** indiqué explícitamente que no se hicieran cambios significativos sin consultarme y explicar el porqué, para que la IA no alterase la arquitectura por su cuenta.
+- **Pedir y revisar un plan antes de codificar:** primero exigí un plan de implementación, lo revisé y lo aprobé; solo entonces se pasó a la ejecución.
+- **Validar el resultado:** comprobé que cada test fallara primero (rojo) y pasara después (verde), y que la suite completa quedara en verde contra la base de datos real.
+
+El valor de esta fase, desde el punto de vista del uso de IA, no está en que "la IA escribió el código", sino en que **un prompt bien construido y unos fundamentos sólidos** —requisitos claros, decisiones de diseño argumentadas, una metodología impuesta y unos límites definidos— permitieron que la IA produjera una feature que **encaja de forma natural en la arquitectura existente, con sus tests y su documentación**, sin desviarse del estilo del proyecto. Esa dirección es la aportación principal: saber **qué** pedir, **cómo** acotarlo y **cómo** verificarlo.
+
+## Decisiones de diseño (que tomé como orquestador antes de empezar)
+
+1. **Modelo de datos: una sola tabla, una fila por intercambio.** Cada fila guarda la pregunta y su respuesta juntas (`conversation_entries`). Se descartó el modelo de dos tablas (`conversations` + `messages`, estilo chat multi-turno) porque el RAG actual es "sin memoria" (cada pregunta es independiente): ese modelo añadiría complejidad sin uso real. Queda como posible mejora futura.
+2. **Endpoint de lectura: `GET /projects/:id/history`.**
+3. **Se guardan también las respuestas de "no tengo información"**, porque son historial real de lo que el usuario preguntó.
+4. **Sin paginación** por ahora: se devuelve todo ordenado por fecha (suficiente para el alcance del proyecto).
+5. **La tabla se enlaza solo por `project_id`** (con `ON DELETE CASCADE`), sin `user_id`: el proyecto ya implica a su dueño. Esto además hace que, el día que exista el modo invitado, al borrar un usuario invitado se borren en cascada sus proyectos y, con ellos, su historial, sin lógica adicional.
+
+## Metodología
+
+Siguiendo la metodología que impuse como orquestador, la IA trabajó con **TDD** de forma estricta, coherente con el resto del proyecto (DDD + arquitectura hexagonal): para cada pieza de lógica se escribió **primero el test** y se comprobó que **falla (rojo)** antes de implementar; solo entonces se escribió el código mínimo para ponerlo **en verde**. Yo revisé el rojo y el verde de cada paso. Los pasos siguientes reflejan ese ciclo, que es también el orden en el que se construyó la feature.
+
+## Paso a paso
+
+### 1. Dominio: la entidad y el puerto del repositorio
+
+Primero se modela el concepto en el dominio, sin depender de infraestructura:
+
+- **Entidad** `ConversationEntry` (`src/domain/entities/conversationEntry.ts`): `id`, `projectId`, `question`, `answer`, `sources` (array de `{ path, startLine, endLine }`) y `createdAt`.
+- **Puerto** `ConversationRepository` (`src/domain/repositories/conversationRepository.ts`): interfaz con `save(entry)` y `findByProjectId(projectId)` (que devuelve el historial ordenado cronológicamente).
+
+Al ser tipos e interfaz, no llevan test propio; su corrección se valida a través de los tests de quienes los usan. En paralelo se crea el doble de test `FakeConversationRepository` (`tests/fakes/fakeConversationRepository.ts`), un repositorio en memoria que implementa el puerto y ordena por fecha, para poder testear los casos de uso sin tocar PostgreSQL.
+
+### 2. Persistencia al preguntar (TDD sobre `AskProjectQuestionUseCase`)
+
+**Primero el test (rojo).** Se amplió `tests/unit/application/projectQuestions/askProjectQuestionUseCase.test.ts` para afirmar que, tras preguntar, **se guarda una entrada** en el `FakeConversationRepository` con la pregunta, la respuesta y las fuentes. Se añadió también la afirmación en el caso de "no hay información" (debe guardarse igualmente) y, en los caminos que lanzan error (pregunta vacía, proyecto ajeno), que **no se guarda nada**.
+
+Al ejecutarlo, el test **falló** por dos motivos esperados: el caso de uso todavía no persistía nada, y su constructor no aceptaba el nuevo repositorio.
+
+**Después la implementación (verde).** Se modificó `AskProjectQuestionUseCase`:
+
+- **Cambio necesario de dependencias:** el constructor recibe ahora dos dependencias nuevas, `ConversationRepository` e `IdGenerator` (para generar el id de la entrada). Es un cambio aditivo e imprescindible: persistir el intercambio es parte de "responder una pregunta", así que la responsabilidad vive de forma cohesionada en este caso de uso, no repartida en el controlador.
+- **Guardado en ambos caminos:** se reestructuró `execute` para calcular `answer` y `sources` (tanto en el camino normal como en el de "sin información") y, a continuación, **guardar una vez** la entrada antes de devolver la respuesta. El comportamiento externo del endpoint no cambia (misma respuesta); solo que ahora, por dentro, además persiste.
+
+Tras el cambio, los tests del caso de uso pasaron a **verde**.
+
+### 3. Lectura del historial (TDD sobre un caso de uso nuevo)
+
+**Primero el test (rojo).** Se creó `tests/unit/application/projectQuestions/getProjectConversationHistoryUseCase.test.ts` con tres casos: devuelve el historial del proyecto ordenado por fecha (y no mezcla el de otros proyectos), devuelve vacío si no hay historial, y lanza `ProjectNotFoundError` si el proyecto no pertenece al usuario. Al no existir aún el caso de uso, el test **falló** al importarlo.
+
+**Después la implementación (verde).** Se creó `GetProjectConversationHistoryUseCase` (`src/application/projectQuestions/getProjectConversationHistoryUseCase.ts`), que reutiliza el patrón de autorización del resto del sistema: comprueba `findByIdAndOwnerId(projectId, userId)` y, si el proyecto es del usuario, devuelve `conversationRepository.findByProjectId(projectId)`. Test **en verde**.
+
+### 4. Infraestructura: migración y repositorio PostgreSQL
+
+- **Migración** `008_create_conversation_entries.sql`: tabla `conversation_entries` con `project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE`, `question`, `answer`, `sources JSONB` y `created_at`, más un índice sobre `project_id`. El uso de `JSONB` permite guardar el array de fuentes de forma nativa.
+- **Adaptador** `PostgresConversationRepository`: implementación del puerto con SQL parametrizado (mismo patrón que el resto de repositorios). En `save` se serializa `sources` con `JSON.stringify` y `$5::jsonb`; en la lectura, `node-postgres` deserializa el `JSONB` automáticamente. `findByProjectId` ordena por `created_at ASC`.
+- **Test de base de datos** `postgresConversationRepository.test.ts`: guarda entradas, comprueba que se listan por proyecto en orden y que las `sources` (incluida la lista vacía) sobreviven al viaje de ida y vuelta a `JSONB`. Se añadió `conversation_entries` a la limpieza (`TRUNCATE`) del `globalSetup` de tests, por consistencia con la convención de listar las tablas explícitamente (aunque el `CASCADE` de `projects` ya la arrastraría).
+
+### 5. Capa HTTP: endpoint, controlador, ruta y wiring
+
+- **Endpoint nuevo:** `GET /projects/:id/history`, protegido con `authMiddleware`.
+- **Controlador:** método `history` en `ProjectController`, que delega en `GetProjectConversationHistoryUseCase` con el `userId` tomado del JWT (nunca del body).
+- **Ruta:** registrada en `projectRoutes.ts`.
+- **Container:** se instancia `PostgresConversationRepository` y se inyecta tanto en `AskProjectQuestionUseCase` (para guardar) como en el nuevo caso de uso de lectura. El endpoint `POST /:id/ask` no cambia por fuera.
+
+### 6. Test de integración (extremo a extremo)
+
+Se creó `tests/integration/projectQuestions/conversationHistoryEndpoint.test.ts`, que ejercita el flujo completo contra la base de datos real: registrarse → login → crear proyecto → preguntar dos veces → `GET /history` devuelve las dos preguntas con sus respuestas en orden. Cubre además: historial vacío (devuelve `[]`), `401` sin token y `404` sobre el proyecto de otro usuario.
+
+### 7. Documentación del contrato (OpenAPI)
+
+Se añadió al `openapi.yaml` la operación `GET /projects/{id}/history` y el schema `ConversationEntry`, para que el contrato siga reflejando fielmente la API (y sirva para generar el frontend).
+
+## Verificación
+
+```txt
+✅ TDD respetado: cada pieza tuvo su test en rojo antes de implementarse
+✅ npm run typecheck → sin errores
+✅ npm test → 166/166 tests en verde (42 archivos), incluidos:
+   - el test unitario de persistencia en AskProjectQuestionUseCase (con fakes)
+   - el test unitario de GetProjectConversationHistoryUseCase (con fakes)
+   - el test de base de datos de PostgresConversationRepository (PostgreSQL real)
+   - el test de integración del endpoint GET /:id/history (extremo a extremo)
+✅ openapi.yaml válido tras añadir el endpoint y el schema ConversationEntry
+```
+
+## Resultado
+
+DevMind guarda ahora, por cada proyecto, el historial de preguntas y respuestas, y lo expone en `GET /projects/:id/history`. La implementación reutiliza por completo la arquitectura existente (puertos/adaptadores, comprobación de propiedad, fakes de test) y no altera el comportamiento externo del endpoint de preguntas. El único cambio de firma —añadir el repositorio de conversaciones y el generador de ids a `AskProjectQuestionUseCase`— era imprescindible para que el guardado viva donde le corresponde. Con esta fase, el "premio" de registrarse queda completo: proyectos, archivos, chunks y embeddings persistentes **y** el historial de conversaciones.
+
+Como cierre, esta fase deja constancia de un **uso responsable y dirigido de la IA** como herramienta de desarrollo: el objetivo, las decisiones de diseño, la metodología (TDD) y la validación fueron mías; la IA aceleró la ejecución dentro de esos límites. El resultado —una feature coherente con la arquitectura, cubierta por tests y documentada— no proviene de delegar el criterio, sino de **orquestar la herramienta con buenos fundamentos**: un objetivo claro, decisiones argumentadas y una verificación exigente.
