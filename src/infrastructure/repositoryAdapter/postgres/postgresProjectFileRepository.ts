@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 
 import { ProjectFile } from "../../../domain/entities/projectFile";
-import { ProjectFileRepository } from "../../../domain/repository/projectFileRepository";
+import { ProjectFileRepository } from "../../../domain/repositories/projectFileRepository";
 
 type ProjectFileRow = {
   id: string;

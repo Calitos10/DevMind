@@ -2,9 +2,9 @@
 import { GetCurrentUserUseCase } from "../application/auth/getCurrentUserUseCase";
 import { LoginUserUseCase } from "../application/auth/loginUserUseCase";
 import { RegisterUserUseCase } from "../application/auth/registerUserUseCase";
-import { BcryptPasswordHasher } from "../infrastructure/authAdapters/bcryptPasswordHasher";
-import { JwtTokenService } from "../infrastructure/authAdapters/jwtTokenService";
-import { CryptoIdGenerator } from "../infrastructure/authAdapters/cryptoIdGenerator";
+import { BcryptPasswordHasher } from "../infrastructure/authAdapter/bcryptPasswordHasher";
+import { JwtTokenService } from "../infrastructure/authAdapter/jwtTokenService";
+import { CryptoIdGenerator } from "../infrastructure/authAdapter/cryptoIdGenerator";
 //Imports de Repositorio Postgres
 import { postgresPool } from "../infrastructure/database/postgresPool";
 import { PostgresUserRepository } from "../infrastructure/repositoryAdapter/postgres/postgresUserRepository";

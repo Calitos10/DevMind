@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 
 import { CodeChunk } from "../../../domain/entities/codeChunk";
-import { CodeChunkRepository } from "../../../domain/repository/codeChunkRepository";
+import { CodeChunkRepository } from "../../../domain/repositories/codeChunkRepository";
 
 export class PostgresCodeChunkRepository implements CodeChunkRepository {
   constructor(private readonly pool: Pool) {}

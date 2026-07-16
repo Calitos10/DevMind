@@ -1,5 +1,5 @@
 import type { AnswerGenerator } from "../../application/ports/answerGenerator";
-import type { SimilarCodeChunk } from "../../domain/repository/codeChunkEmbeddingRepository";
+import type { SimilarCodeChunk } from "../../domain/repositories/codeChunkEmbeddingRepository";
 import { ai } from "./ai";
 
 type GenkitLikeAi = {

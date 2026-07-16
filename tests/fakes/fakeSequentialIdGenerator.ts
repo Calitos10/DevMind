@@ -1,4 +1,4 @@
-import type { IdGenerator } from "../../src/application/ports/idGeneratorPort";
+import type { IdGenerator } from "../../src/application/ports/idGenerator";
 
 export class FakeSequentialIdGenerator implements IdGenerator {
   private currentIndex = 0;

@@ -1,4 +1,4 @@
-import type { PasswordHasher } from "../../src/application/ports/passwordHasherPort";
+import type { PasswordHasher } from "../../src/application/ports/passwordHasher";
 
 export class FakePasswordHasher implements PasswordHasher {
   async hash(plainPassword: string): Promise<string> {

@@ -1,5 +1,5 @@
-import type { ProjectRepository } from "../../domain/repository/projectRepository";
-import type { ProjectIndexingJobRepository } from "../../domain/repository/projectIndexingJobRepository";
+import type { ProjectRepository } from "../../domain/repositories/projectRepository";
+import type { ProjectIndexingJobRepository } from "../../domain/repositories/projectIndexingJobRepository";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type GetProjectIndexingStatusUseCaseInput = {

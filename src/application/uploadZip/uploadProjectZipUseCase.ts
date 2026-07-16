@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { CodeChunkGenerator } from "../ports/codeChunkGeneratorPort";
-import { ProjectRepository } from "../../domain/repository/projectRepository";
-import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
-import { IdGenerator } from "../../application/ports/idGeneratorPort";
+import type { CodeChunkGenerator } from "../ports/codeChunkGenerator";
+import { ProjectRepository } from "../../domain/repositories/projectRepository";
+import { ProjectFileRepository } from "../../domain/repositories/projectFileRepository";
+import { IdGenerator } from "../../application/ports/idGenerator";
 import { ZipExtractor } from "../../application/ports/zipExtractor";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { NoValidProjectFilesFoundError } from "../../shared/errors/noValidProjectFilesFoundError";

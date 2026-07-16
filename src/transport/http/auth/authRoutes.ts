@@ -7,7 +7,7 @@ import { authMiddleware } from "../middleware/authMiddleware";
 import { authRateLimitMiddleware } from "../middleware/authRateLimitMiddleware";
 import { validateBody } from "../middleware/validateBodyMiddleware";
 import { AuthController } from "./authController";
-import { loginSchema, registerSchema } from "./authSchema";
+import { loginSchema, registerSchema } from "./authSchemas";
 
 export const authRoutes = Router();
 

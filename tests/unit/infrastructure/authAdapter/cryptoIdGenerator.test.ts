@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CryptoIdGenerator } from "../../../../src/infrastructure/authAdapters/cryptoIdGenerator";
+import { CryptoIdGenerator } from "../../../../src/infrastructure/authAdapter/cryptoIdGenerator";
 
 describe("CryptoIdGenerator", () => {
   it("should generate a UUID", () => {

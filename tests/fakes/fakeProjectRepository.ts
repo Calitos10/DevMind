@@ -1,5 +1,5 @@
 import type { Project } from "../../src/domain/entities/project";
-import type { ProjectRepository } from "../../src/domain/repository/projectRepository";
+import type { ProjectRepository } from "../../src/domain/repositories/projectRepository";
 
 export class FakeProjectRepository implements ProjectRepository {
   constructor(public projects: Project[] = []) {}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CreateProjectFileUseCase } from "../../../../src/application/projectFiles/createProjectFileUseCase";
-import { FileHashGenerator } from "../../../../src/application/ports/fileHashGeneratorPort";
+import { FileHashGenerator } from "../../../../src/application/ports/fileHashGenerator";
 import { Project } from "../../../../src/domain/entities/project";
 import { ProjectNotFoundError } from "../../../../src/shared/errors/projectNotFoundError";
 import { FakeIdGenerator } from "../../../fakes/fakeIdGenerator";

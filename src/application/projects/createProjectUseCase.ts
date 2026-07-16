@@ -1,6 +1,6 @@
-import type { IdGenerator } from "../ports/idGeneratorPort";
+import type { IdGenerator } from "../ports/idGenerator";
 import type { Project } from "../../domain/entities/project";
-import type { ProjectRepository } from "../../domain/repository/projectRepository";
+import type { ProjectRepository } from "../../domain/repositories/projectRepository";
 
 type CreateProjectInput = {
   ownerId: string;

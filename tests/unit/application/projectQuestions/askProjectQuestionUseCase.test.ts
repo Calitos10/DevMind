@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnswerGenerator } from "../../../../src/application/ports/answerGenerator";
-import type { SimilarCodeChunk } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
+import type { SimilarCodeChunk } from "../../../../src/domain/repositories/codeChunkEmbeddingRepository";
 import { AskProjectQuestionUseCase } from "../../../../src/application/projectQuestions/askProjectQuestionUseCase";
 import { FakeCodeChunkEmbeddingRepository } from "../../../fakes/fakeCodeChunkEmbeddingRepository";
 import { FakeEmbeddingGenerator } from "../../../fakes/fakeEmbeddingGenerator";

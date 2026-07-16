@@ -2,7 +2,7 @@ import type { CodeChunkEmbedding } from "../../src/domain/entities/codeChunkEmbe
 import type {
   CodeChunkEmbeddingRepository,
   SimilarCodeChunk,
-} from "../../src/domain/repository/codeChunkEmbeddingRepository";
+} from "../../src/domain/repositories/codeChunkEmbeddingRepository";
 
 export class FakeCodeChunkEmbeddingRepository
   implements CodeChunkEmbeddingRepository

@@ -1,4 +1,4 @@
-import type { IdGenerator } from "../../src/application/ports/idGeneratorPort";
+import type { IdGenerator } from "../../src/application/ports/idGenerator";
 
 export class FakeIdGenerator implements IdGenerator {
   constructor(private readonly id: string) {}

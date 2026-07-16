@@ -1,7 +1,7 @@
 import { Pool } from "pg";
 
 import type { ProjectIndexingJob } from "../../../domain/entities/projectIndexingJob";
-import type { ProjectIndexingJobRepository } from "../../../domain/repository/projectIndexingJobRepository";
+import type { ProjectIndexingJobRepository } from "../../../domain/repositories/projectIndexingJobRepository";
 
 export class PostgresProjectIndexingJobRepository
   implements ProjectIndexingJobRepository

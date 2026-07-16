@@ -1,5 +1,5 @@
 import type { Project } from "../../domain/entities/project";
-import type { ProjectRepository } from "../../domain/repository/projectRepository";
+import type { ProjectRepository } from "../../domain/repositories/projectRepository";
 
 type ListUserProjectsInput = {
   ownerId: string;

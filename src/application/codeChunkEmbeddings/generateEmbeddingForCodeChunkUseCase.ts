@@ -1,12 +1,12 @@
 import { CodeChunk } from "../../domain/entities/codeChunk";
 import { CodeChunkEmbedding } from "../../domain/entities/codeChunkEmbedding";
-import { CodeChunkEmbeddingRepository } from "../../domain/repository/codeChunkEmbeddingRepository";
-import { IdGenerator } from "../ports/idGeneratorPort";
+import { CodeChunkEmbeddingRepository } from "../../domain/repositories/codeChunkEmbeddingRepository";
+import { IdGenerator } from "../ports/idGenerator";
 import { EmbeddingGenerator } from "../ports/embeddingGenerator";
 import type {
   EmbeddingForCodeChunkGenerator,
   GenerateEmbeddingForCodeChunkResult,
-} from "../ports/embeddingForCodeChunkGeneratorPort";
+} from "../ports/embeddingForCodeChunkGenerator";
 
 type GenerateEmbeddingForCodeChunkInput = {
   codeChunk: CodeChunk;

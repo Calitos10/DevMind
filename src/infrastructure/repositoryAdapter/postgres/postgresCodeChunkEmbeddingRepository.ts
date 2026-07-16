@@ -4,7 +4,7 @@ import { CodeChunkEmbedding } from "../../../domain/entities/codeChunkEmbedding"
 import {
   CodeChunkEmbeddingRepository,
   SimilarCodeChunk,
-} from "../../../domain/repository/codeChunkEmbeddingRepository";
+} from "../../../domain/repositories/codeChunkEmbeddingRepository";
 
 export class PostgresCodeChunkEmbeddingRepository implements CodeChunkEmbeddingRepository {
   constructor(private readonly pool: Pool) {}

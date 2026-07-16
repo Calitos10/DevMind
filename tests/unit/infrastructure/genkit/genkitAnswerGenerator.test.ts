@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SimilarCodeChunk } from "../../../../src/domain/repository/codeChunkEmbeddingRepository";
+import { SimilarCodeChunk } from "../../../../src/domain/repositories/codeChunkEmbeddingRepository";
 import { GenkitAnswerGenerator } from "../../../../src/infrastructure/genkit/genkitAnswerGenerator";
 
 type FakeGenerateInput = {

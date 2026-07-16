@@ -8207,6 +8207,79 @@ Se añadió un test unitario al caso de uso que arranca con un job ya en `proces
 
 ---
 
+## Fase 11.15 — Consistencia de nombres: archivos, carpetas y una clase de error
+
+### Problema
+
+Una revisión de _naming_ archivo por archivo confirmó que la base era sólida (todo en inglés, `lowerCamelCase` en los ficheros, sin mezcla español/inglés en identificadores, y las clases de infraestructura casando con su nombre de fichero). Aun así, aparecían **inconsistencias de coherencia** que, sin ser bugs, ensuciaban la lectura y rompían las convenciones del propio proyecto:
+
+```txt
+1. shared/errors/questionIsRequired.ts → clase QuestionIsRequired.
+   Todas las demás clases de error terminan en "Error" (ProjectNotFoundError,
+   ZipTooLargeError...). Esta se leía como una frase, no como un sustantivo.
+
+2. application/ports/ → sufijo "Port" aplicado a medias: 5 ficheros con sufijo
+   (idGeneratorPort, passwordHasherPort, fileHashGeneratorPort,
+   codeChunkGeneratorPort, embeddingForCodeChunkGeneratorPort) y 5 sin él
+   (delay, tokenService, answerGenerator, embeddingGenerator, zipExtractor).
+   Además NINGUNA interfaz interna usa el sufijo (IdGenerator, PasswordHasher...).
+
+3. domain/repository/ en singular, mientras sus hermanas son plurales
+   (domain/entities/, domain/services/) y la carpeta agrupa 6 repositorios.
+
+5. transport/http/auth/authSchema.ts en singular pese a exportar 2 schemas
+   (registerSchema, loginSchema); sus equivalentes son plurales
+   (projectSchemas.ts, projectFileSchemas.ts).
+
+6. infrastructure/authAdapters/ en plural, frente a fileAdapter, repositoryAdapter,
+   timeDelayAdapter y uploadZipAdapter, todos en singular.
+```
+
+(Los puntos se numeran como en el informe de revisión; el 4 —`application/codeChunk` en singular— y el 7 —`User` como `class` en vez de `type`— se dejaron fuera por implicar mover una carpeta de dominio con más superficie y por tocar código que instancia la entidad, respectivamente. Se documentan como deuda menor pendiente.)
+
+### Cambio realizado
+
+Renombrados puramente mecánicos (fichero/carpeta + actualización de imports), sin ningún cambio de comportamiento:
+
+```txt
+1. questionIsRequired.ts        → questionIsRequiredError.ts
+   class QuestionIsRequired      → QuestionIsRequiredError
+
+2. ports: se elimina el sufijo "Port" de los 5 ficheros para alinearlos con el
+   resto y con las interfaces que ya no lo llevaban:
+     idGeneratorPort.ts                    → idGenerator.ts
+     passwordHasherPort.ts                 → passwordHasher.ts
+     fileHashGeneratorPort.ts              → fileHashGenerator.ts
+     codeChunkGeneratorPort.ts             → codeChunkGenerator.ts
+     embeddingForCodeChunkGeneratorPort.ts → embeddingForCodeChunkGenerator.ts
+
+3. domain/repository/            → domain/repositories/
+
+5. auth/authSchema.ts           → auth/authSchemas.ts
+
+6. infrastructure/authAdapters/ → infrastructure/authAdapter/
+   (y su carpeta espejo en tests: tests/unit/infrastructure/authAdapter/)
+```
+
+Todos los movimientos se hicieron con `git mv` para preservar el historial, y las importaciones afectadas (en `src` y `tests`) se actualizaron en consecuencia.
+
+### Verificación
+
+```txt
+✅ grep de referencias obsoletas: ninguna (ni imports ni nombre de clase antiguo)
+✅ npm run typecheck → sin errores
+✅ Tests unitarios sin dependencia de BD en verde (84/84), incluidos los de
+   authAdapter/, ports y el error renombrado
+   [los tests de infrastructure/database/ requieren PostgreSQL levantado y no
+    se ejecutaron en esta verificación local]
+✅ Cambio de solo-renombrado: comportamiento idéntico, cubierto por los tests
+   existentes
+```
+
+Quedan como deuda menor consciente los puntos 4 (`application/codeChunk` → `codeChunks`) y 7 (`User` como `type` en lugar de `class`), por su mayor superficie de cambio frente al beneficio de coherencia.
+
+---
+
 ## Verificación de la Fase 11
 
 Tras aplicar todos los cambios:
@@ -8225,4 +8298,4 @@ openapi.yaml       → YAML válido tras la sincronización
 
 ## Estado tras la Fase 11
 
-La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. A ellas se suma la Fase 11.14, que protege la ruta de indexación —la más cara del sistema— con un guard de idempotencia (**409 si ya hay una indexación en curso**, evitando pasadas solapadas) y un rate limit por usuario. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.
+La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. A ellas se suma la Fase 11.14, que protege la ruta de indexación —la más cara del sistema— con un guard de idempotencia (**409 si ya hay una indexación en curso**, evitando pasadas solapadas) y un rate limit por usuario. Por último, la Fase 11.15 es una pasada de **consistencia de nombres** (archivos, carpetas y una clase de error) sin impacto de comportamiento, que alinea el proyecto con sus propias convenciones. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.

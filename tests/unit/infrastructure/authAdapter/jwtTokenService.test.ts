@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JwtTokenService } from "../../../../src/infrastructure/authAdapters/jwtTokenService";
+import { JwtTokenService } from "../../../../src/infrastructure/authAdapter/jwtTokenService";
 import { UnauthorizedError } from "../../../../src/shared/errors/unauthorizedError";
 
 describe("JwtTokenService", () => {

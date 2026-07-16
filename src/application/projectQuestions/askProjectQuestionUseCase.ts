@@ -1,12 +1,12 @@
-import type { ProjectRepository } from "../../domain/repository/projectRepository";
+import type { ProjectRepository } from "../../domain/repositories/projectRepository";
 import type {
   CodeChunkEmbeddingRepository,
   SimilarCodeChunk,
-} from "../../domain/repository/codeChunkEmbeddingRepository";
+} from "../../domain/repositories/codeChunkEmbeddingRepository";
 import type { EmbeddingGenerator } from "../ports/embeddingGenerator";
 import type { AnswerGenerator } from "../ports/answerGenerator";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
-import { QuestionIsRequired } from "../../shared/errors/questionIsRequired";
+import { QuestionIsRequiredError } from "../../shared/errors/questionIsRequiredError";
 
 type AskProjectQuestionInput = {
   projectId: string;
@@ -38,7 +38,7 @@ export class AskProjectQuestionUseCase {
     input: AskProjectQuestionInput,
   ): Promise<AskProjectQuestionOutput> {
     if (!input.question.trim()) {
-      throw new QuestionIsRequired();
+      throw new QuestionIsRequiredError();
     }
 
     const project = await this.projectRepository.findByIdAndOwnerId(

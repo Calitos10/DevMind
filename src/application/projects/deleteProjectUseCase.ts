@@ -1,4 +1,4 @@
-import type { ProjectRepository } from "../../domain/repository/projectRepository";
+import type { ProjectRepository } from "../../domain/repositories/projectRepository";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type DeleteProjectInput = {

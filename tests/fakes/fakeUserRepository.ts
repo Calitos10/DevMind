@@ -1,5 +1,5 @@
 import type { User } from "../../src/domain/entities/user";
-import type { UserRepository } from "../../src/domain/repository/userRepository";
+import type { UserRepository } from "../../src/domain/repositories/userRepository";
 
 export class FakeUserRepository implements UserRepository {
   public users: User[] = [];

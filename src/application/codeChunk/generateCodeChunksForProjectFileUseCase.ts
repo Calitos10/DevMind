@@ -1,11 +1,11 @@
 import { ProjectFile } from "../../domain/entities/projectFile";
 import { CodeChunk } from "../../domain/entities/codeChunk";
-import { CodeChunkRepository } from "../../domain/repository/codeChunkRepository";
-import { IdGenerator } from "../ports/idGeneratorPort";
+import { CodeChunkRepository } from "../../domain/repositories/codeChunkRepository";
+import { IdGenerator } from "../ports/idGenerator";
 import type {
   CodeChunkGenerator,
   GenerateCodeChunksResult,
-} from "../ports/codeChunkGeneratorPort";
+} from "../ports/codeChunkGenerator";
 
 export type ChunkResult = {
   content: string;

@@ -1,8 +1,8 @@
-import { FileHashGenerator } from "../ports/fileHashGeneratorPort";
-import { IdGenerator } from "../ports/idGeneratorPort";
+import { FileHashGenerator } from "../ports/fileHashGenerator";
+import { IdGenerator } from "../ports/idGenerator";
 import { ProjectFile } from "../../domain/entities/projectFile";
-import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
-import { ProjectRepository } from "../../domain/repository/projectRepository";
+import { ProjectFileRepository } from "../../domain/repositories/projectFileRepository";
+import { ProjectRepository } from "../../domain/repositories/projectRepository";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 
 type CreateProjectFileInput = {

@@ -1,6 +1,6 @@
-import { UserRepository } from "../../domain/repository/userRepository";
+import { UserRepository } from "../../domain/repositories/userRepository";
 import { InvalidCredentialsError } from "../../shared/errors/invalidCredentialsError";
-import { PasswordHasher } from "../ports/passwordHasherPort";
+import { PasswordHasher } from "../ports/passwordHasher";
 import { TokenService } from "../ports/tokenService";
 
 type LoginUserInput = {

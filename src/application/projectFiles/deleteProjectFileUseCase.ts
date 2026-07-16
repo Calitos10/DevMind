@@ -1,5 +1,5 @@
-import { ProjectFileRepository } from "../../domain/repository/projectFileRepository";
-import { ProjectRepository } from "../../domain/repository/projectRepository";
+import { ProjectFileRepository } from "../../domain/repositories/projectFileRepository";
+import { ProjectRepository } from "../../domain/repositories/projectRepository";
 import { ProjectFileNotFoundError } from "../../shared/errors/projectFileNotFoundError";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 

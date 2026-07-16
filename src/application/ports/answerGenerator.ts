@@ -1,4 +1,4 @@
-import type { SimilarCodeChunk } from "../../domain/repository/codeChunkEmbeddingRepository";
+import type { SimilarCodeChunk } from "../../domain/repositories/codeChunkEmbeddingRepository";
 
 export interface AnswerGenerator {
   generateAnswer(input: {

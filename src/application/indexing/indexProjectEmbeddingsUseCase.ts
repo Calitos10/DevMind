@@ -1,8 +1,8 @@
-import type { EmbeddingForCodeChunkGenerator } from "../ports/embeddingForCodeChunkGeneratorPort";
-import type { ProjectRepository } from "../../domain/repository/projectRepository";
-import type { CodeChunkRepository } from "../../domain/repository/codeChunkRepository";
-import type { ProjectIndexingJobRepository } from "../../domain/repository/projectIndexingJobRepository";
-import type { IdGenerator } from "../ports/idGeneratorPort";
+import type { EmbeddingForCodeChunkGenerator } from "../ports/embeddingForCodeChunkGenerator";
+import type { ProjectRepository } from "../../domain/repositories/projectRepository";
+import type { CodeChunkRepository } from "../../domain/repositories/codeChunkRepository";
+import type { ProjectIndexingJobRepository } from "../../domain/repositories/projectIndexingJobRepository";
+import type { IdGenerator } from "../ports/idGenerator";
 import type { Delay } from "../ports/delay";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { IndexingAlreadyInProgressError } from "../../shared/errors/indexingAlreadyInProgressError";

@@ -1,5 +1,5 @@
 import type { CodeChunk } from "../../src/domain/entities/codeChunk";
-import type { CodeChunkRepository } from "../../src/domain/repository/codeChunkRepository";
+import type { CodeChunkRepository } from "../../src/domain/repositories/codeChunkRepository";
 
 export class FakeCodeChunkRepository implements CodeChunkRepository {
   public codeChunks: CodeChunk[] = [];
