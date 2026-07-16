@@ -12,6 +12,14 @@ export default defineConfig({
     fileParallelism: false,
     env: {
       NODE_ENV: "test",
+      // Valores dummy: infrastructure/genkit/ai.ts (GEMINI_API_KEY) e
+      // infrastructure/config/env.ts (JWT_SECRET) lanzan al importarse si su
+      // variable falta. Los tests no las usan de verdad (el container inyecta
+      // fakes con NODE_ENV=test y el JWT se firma/verifica con este mismo
+      // secreto de forma autoconsistente), pero definirlas aquí hace que la
+      // suite no dependa de un .env presente (checkout limpio, CI, etc.).
+      GEMINI_API_KEY: "test-dummy-gemini-key",
+      JWT_SECRET: "test-dummy-jwt-secret",
     },
   },
 });

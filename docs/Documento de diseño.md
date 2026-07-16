@@ -53,30 +53,25 @@ Esto deja claro que DevMind no es solo un CRUD, sino una herramienta para entend
 El proyecto se ha dividido en fases para construir DevMind de forma progresiva y siguiendo una arquitectura limpia.
 
 ```txt
-Fase 0 → Inicialización del proyecto
-Fase 1 → Autenticación
-Fase 2 → Proyectos
-Fase 3 → ProjectFiles
-Fase 4 → PostgreSQL
-Fase 5 → Subida de ZIP
-Fase 6 → Sincronización de resubidas de ZIP
-Fase 7 → CodeChunks
-Fase 8 → Genkit + PostgreSQL/pgvector, embeddings y búsqueda semántica
-Fase 9 — IA/RAG
-Fase 10 — Historial de conversaciones
-Guardar preguntas/respuestas por proyecto
+FASES IMPLEMENTADAS
+Fase 0  → Inicialización del proyecto
+Fase 1  → Autenticación
+Fase 2  → Proyectos
+Fase 3  → ProjectFiles
+Fase 4  → PostgreSQL
+Fase 5  → Subida de ZIP
+Fase 6  → Sincronización de resubidas de ZIP
+Fase 7  → CodeChunks
+Fase 8  → Genkit + PostgreSQL/pgvector, embeddings y búsqueda semántica
+Fase 9  → IA/RAG: preguntas sobre el proyecto
+Fase 10 → Indexación asíncrona y robusta
+Fase 11 → Refactor, endurecimiento y mejoras técnicas
 
-Fase 11 — Mejoras de RAG
-Mejor prompt, más sources, ranking, límites de contexto
-
-Fase 12 — Frontend
-Interfaz para subir ZIP y preguntar al proyecto
-
-Fase 13 — OpenAPI / documentación final
-Documentar endpoints para presentación/TFM
-
-Fase 14 — Deploy
-Subir backend, PostgreSQL y variables de entorno
+FASES PENDIENTES (no implementadas aún)
+Fase 12 → Historial de conversaciones (guardar preguntas/respuestas por proyecto)
+Fase 13 → Mejoras de RAG (mejor prompt, más sources, ranking, límites de contexto)
+Fase 14 → Frontend (interfaz para subir el ZIP y preguntar al proyecto)
+Fase 15 → Deploy (backend, PostgreSQL y variables de entorno en producción)
 ```
 
 ---
@@ -8280,6 +8275,191 @@ Quedan como deuda menor consciente los puntos 4 (`application/codeChunk` → `co
 
 ---
 
+## Fase 11.16 — Cierre de huecos de cobertura: test del estado de indexación y test del rate limiting
+
+### Problema
+
+Una revisión de la carpeta `tests/` detectó dos huecos de cobertura sobre funcionalidad **real y activa** del proyecto:
+
+```txt
+1. GetProjectIndexingStatusUseCase no tenía test unitario propio: solo se
+   ejercitaba de forma indirecta a través del test de integración HTTP. Era el
+   único caso de uso del bloque de indexación/RAG sin test dedicado (los otros
+   —indexProjectEmbeddings, askProjectQuestion, generateEmbeddingForCodeChunk—
+   sí lo tenían).
+
+2. El rate limiting no estaba testeado en ningún sitio. Ninguno de los cuatro
+   limiters (auth, ask, upload e index) tenía un test que disparase el límite y
+   comprobase el 429; se había verificado a mano en su momento, pero sin quedar
+   como test automatizado. Riesgo de regresión silenciosa: alguien podía tocar
+   la configuración del limiter y romper el límite sin que nada lo avisara.
+```
+
+El segundo hueco era especialmente relevante tras la Fase 11.14, que añadió un **cuarto** limiter (`indexRateLimitMiddleware`) precisamente para proteger la ruta más cara del sistema: una protección de seguridad que conviene demostrar con un test en verde, no solo con una comprobación manual.
+
+### Cambio realizado
+
+**1. Test unitario de `GetProjectIndexingStatusUseCase.**
+
+```txt
+tests/unit/application/indexing/getProjectIndexingStatusUseCase.test.ts
+  - Calca el patrón del test de indexProjectEmbeddings (fake local del
+    repositorio de jobs + FakeProjectRepository compartido).
+  - 5 casos: sin job (estado "pending" con contadores a 0), job "processing"
+    (verifica el cálculo de progreso: 3/8 → 38 %, redondeado), job "completed"
+    (100 %), job "failed" (mantiene el progreso parcial 1/4 → 25 %) y proyecto
+    de otro usuario (ProjectNotFoundError).
+```
+
+**2. Test de integración del rate limiting (los cuatro limiters).**
+
+El reto era que los limiters se **desactivan en entorno de test** (`skip: () => env.nodeEnv === "test"`), para no interferir con el resto de la suite. La clave es que ese `skip` es un _closure_ que lee `env.nodeEnv` **en cada petición**, así que el test puede activarlos temporalmente:
+
+```txt
+tests/integration/rateLimit/rateLimitMiddleware.test.ts
+  - beforeAll: env.nodeEnv = "development"  (desactiva el skip → limiters activos)
+    afterAll:  se restaura el valor original.
+    Es seguro porque vitest.config.ts usa fileParallelism: false (los ficheros
+    corren en serie): ningún otro test se ve afectado por el cambio temporal.
+  - Monta cada middleware REAL sobre una ruta trivial (GET /limited) con
+    supertest, sin arrastrar auth, base de datos ni proyectos. El rate limit es
+    agnóstico al método/ruta, así que esto prueba el limiter de forma aislada.
+  - Por cada limiter dispara env.X.max peticiones (deben dar 200) y una más
+    (debe dar 429 con el mensaje "Too many requests, please try again later").
+    Al leer el límite desde env.X.max, el test NO se rompe si se reconfiguran
+    los límites por entorno.
+  - Cubre los cuatro: authRateLimit, askRateLimit, uploadRateLimit e
+    indexRateLimit (este último, el añadido en la Fase 11.14).
+```
+
+### Verificación
+
+```txt
+✅ getProjectIndexingStatusUseCase.test.ts → 5/5 en verde
+✅ rateLimitMiddleware.test.ts → 4/4 en verde (un test por limiter, patrón N+1)
+✅ npm run typecheck → sin errores
+```
+
+Con esto, todo el bloque de indexación/RAG tiene test unitario dedicado y el rate limiting —incluida la nueva protección de la ruta de indexación— queda demostrado con tests automatizados en lugar de depender de comprobaciones manuales.
+
+---
+
+## Fase 11.17 — Eliminar la dependencia oculta de `GEMINI_API_KEY` en la suite de tests
+
+### Problema
+
+Una revisión de la carga de la suite detectó una **dependencia oculta en tiempo de _import_**: toda la batería de tests requería que la variable `GEMINI_API_KEY` estuviese definida, **aunque ningún test llama de verdad a la API de Gemini** (con `NODE_ENV=test` el container inyecta fakes: `TestEmbeddingGenerator` y `TestAnswerGenerator`).
+
+El motivo es la cadena de importaciones y el hecho de que la comprobación de la clave está en el **cuerpo del módulo** (se ejecuta al importar, no al usar):
+
+```txt
+tests → app.ts → container.ts
+  import { GenkitAnswerGenerator }    (container.ts, import estático e incondicional)
+  import { GenkitEmbeddingGenerator }
+        → import { ai } from "./ai"
+              → ai.ts (nivel de módulo):
+                    if (!process.env.GEMINI_API_KEY) throw new Error(...)
+```
+
+La paradoja: el container **decide usar fakes en tiempo de ejecución**, pero esa decisión ocurre *después* de que todos los `import` se hayan resuelto. Al importar `GenkitAnswerGenerator`/`GenkitEmbeddingGenerator` se arrastra `ai.ts`, cuyo `throw` de nivel de módulo se dispara en la carga, mucho antes de elegir el fake. Resultado: **runtime** no usa la clave para nada, pero **load time** la exige o la suite entera revienta en el import.
+
+Hoy no daba la cara porque `.env` siempre define la variable (y `ai.ts` hace `dotenv.config()` al cargar). El riesgo aparece en un **checkout limpio sin `.env`** o en un **futuro pipeline de CI**: toda la suite fallaría antes de ejecutar un solo test, con un error (`GEMINI_API_KEY is not defined`) que no tiene nada que ver con el test que se quería correr. El impacto real es **bajo hoy** (solo se ejecuta en la máquina de desarrollo, no hay CI), pero es relevante de cara a portabilidad y despliegue.
+
+### Cambio realizado
+
+Se optó por la solución más simple y de menor riesgo (**valores dummy garantizados en el entorno de test**), sin tocar el código de producción. `vitest.config.ts` ya inyectaba `NODE_ENV=test`; se añaden ahí las dos variables que se comprueban a nivel de módulo. Aprovechando el mismo cambio se cubrió también el **caso hermano de `JWT_SECRET`** (`infrastructure/config/env.ts` lanza igual si falta), de modo que la suite queda totalmente independiente de un `.env` presente:
+
+```txt
+vitest.config.ts → test.env:
+    NODE_ENV: "test"
+    GEMINI_API_KEY: "test-dummy-gemini-key"   ← nuevo (ai.ts)
+    JWT_SECRET: "test-dummy-jwt-secret"       ← nuevo (env.ts)
+```
+
+Es seguro porque:
+
+- Los tests **nunca** llaman a Gemini (usan fakes), así que `GEMINI_API_KEY` no se emplea para ninguna llamada real; solo satisface el `if` de `ai.ts` al importar.
+- El `JWT_SECRET` dummy se usa de forma **autoconsistente**: los tests que ejercitan auth firman y verifican el token con ese mismo secreto, así que un valor de relleno es perfectamente válido.
+- `vitest` aplica `test.env` a `process.env` **antes** de cargar el grafo de módulos, y `dotenv.config()` no sobrescribe variables ya presentes, por lo que la suite deja de depender de que exista un `.env`.
+
+No se eligió la alternativa (mover los `throw` a un chequeo _perezoso_ dentro del primer uso real) para no tocar código de producción ya en uso; la inyección en la config de test resuelve el problema con un cambio localizado y reversible. `DATABASE_URL`, la tercera variable requerida, ya la aporta el script `npm test` de forma explícita, así que no necesita dummy.
+
+### Verificación
+
+Se reprodujo el escenario del hallazgo moviendo temporalmente el `.env` (simulando un checkout limpio), comprobando tanto `GEMINI_API_KEY` (import de `ai.ts`) como `JWT_SECRET` (import de `env.ts`):
+
+```txt
+✅ SIN el dummy de GEMINI_API_KEY y SIN .env → falla en el import con exactamente
+   "GEMINI_API_KEY environment variable is not defined"      (reproduce el problema)
+✅ SIN el dummy de JWT_SECRET y SIN .env    → falla en el import con
+   "JWT_SECRET is required"                                  (mismo patrón, caso hermano)
+✅ CON ambos dummies y SIN .env → la suite carga y los tests pasan
+✅ .env restaurado tras la comprobación
+```
+
+Con esto, la suite deja de tener dependencias ocultas en el import: arranca en un checkout limpio sin `.env` (las tres variables requeridas quedan cubiertas: `GEMINI_API_KEY` y `JWT_SECRET` por `test.env`, y `DATABASE_URL` por el script `npm test`).
+
+---
+
+## Fase 11.18 — Eliminar la creación manual de archivos: los archivos solo entran por ZIP
+
+### Problema
+
+El sistema exponía **dos vías** para meter archivos en un proyecto:
+
+```txt
+1. POST /projects/:projectId/upload  → subir un ZIP (flujo principal).
+2. POST /projects/:projectId/files   → crear un archivo suelto a mano
+                                        (path + language + content en el body).
+```
+
+La segunda vía (creación manual, archivo a archivo) había quedado **en desuso**: la experiencia real es subir el proyecto entero como ZIP, y mantener un endpoint alternativo para crear archivos sueltos era superficie de código y de API sin uso, que además invitaba a estados incoherentes (archivos creados a mano que no forman parte de ningún ZIP subido).
+
+### Cambio realizado
+
+Se elimina **solo** la vía de creación manual (`POST .../files`), conservando el resto de la gestión de archivos (**listar, ver y borrar**), que sigue siendo útil para inspeccionar y depurar lo que el ZIP ha creado. Al hacerlo se detectó y limpió toda la cadena que quedaba muerta —no bastaba con borrar la ruta—:
+
+```txt
+Ruta        projectFileRoutes.ts     → se quita el POST /:projectId/files
+                                        (y el import de validateBody, ya sin uso aquí).
+Controller  projectFileController.ts → se elimina el método create() y su dependencia.
+Caso de uso createProjectFileUseCase.ts → borrado (solo lo usaba esa ruta; el flujo de
+                                        ZIP escribe en projectFileRepository directamente).
+Schema      projectFileSchemas.ts    → borrado (projectFileSchema solo validaba el create).
+Puerto/adaptador de hash:
+   ports/fileHashGenerator.ts        → borrado
+   infrastructure/fileAdapter/cryptoFileHashGenerator.ts → borrado (carpeta eliminada)
+   → eran dependencias EXCLUSIVAS del create manual. El flujo de ZIP calcula su propio
+     hash inline con createHash de node:crypto, así que este puerto quedaba huérfano.
+Container   container.ts             → se retiran los imports e instancias de
+                                        CreateProjectFileUseCase y CryptoFileHashGenerator.
+OpenAPI     openapi.yaml             → se elimina la operación POST /projects/{projectId}/files.
+```
+
+Un detalle importante que confirma que el borrado es seguro: `UploadProjectZipUseCase` **nunca** dependió de `CreateProjectFileUseCase`; sincroniza los archivos usando `projectFileRepository` directamente (`save`/`update`/`delete`). Por eso quitar la creación manual no toca en absoluto la subida por ZIP.
+
+### Impacto en los tests
+
+El test de integración de archivos (`projectFilesEndpoints.test.ts`) **sembraba** los datos de las pruebas de listar/ver/borrar usando el propio `POST .../files`. Al desaparecer ese endpoint, se reescribió la siembra para que use el **único camino real** que ahora crea archivos: la subida de un ZIP (con `AdmZip`, igual que el test de `upload`). Se extrajeron helpers (`registerAndLogin`, `createProject`, `uploadFiles`) para no repetir el _setup_, y se eliminaron los casos que probaban específicamente el `POST` de creación manual. Las pruebas de listar, ver y borrar se mantienen intactas en intención.
+
+Se eliminó también el test unitario `createProjectFileUseCase.test.ts` (el caso de uso ya no existe). No había test dedicado del adaptador de hash, así que su borrado no dejó tests colgando.
+
+### Verificación
+
+```txt
+✅ npm run typecheck → sin errores (sin referencias muertas al caso de uso, schema,
+   puerto ni adaptador eliminados)
+✅ openapi.yaml → YAML válido tras quitar la operación POST
+✅ smoke test → la app arranca y cablea el container sin el caso de uso de creación
+   (import de src/app.ts sin errores)
+   [los tests de integración de archivos requieren PostgreSQL levantado; con la BD
+    activa se validan con npm test]
+```
+
+La gestión de archivos queda alineada con el flujo real del producto: **los archivos solo entran por ZIP**, y el usuario únicamente puede listar, ver y borrar los que ese ZIP ha generado.
+
+---
+
 ## Verificación de la Fase 11
 
 Tras aplicar todos los cambios:
@@ -8298,4 +8478,4 @@ openapi.yaml       → YAML válido tras la sincronización
 
 ## Estado tras la Fase 11
 
-La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. A ellas se suma la Fase 11.14, que protege la ruta de indexación —la más cara del sistema— con un guard de idempotencia (**409 si ya hay una indexación en curso**, evitando pasadas solapadas) y un rate limit por usuario. Por último, la Fase 11.15 es una pasada de **consistencia de nombres** (archivos, carpetas y una clase de error) sin impacto de comportamiento, que alinea el proyecto con sus propias convenciones. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.
+La mayoría de esta fase es consolidación y endurecimiento sin cambiar el comportamiento (JWT, helmet, rate limit, límite de ZIP, CORS y umbral de RAG por entorno, 400 en pregunta vacía, tests herméticos, OpenAPI sincronizado y la limpieza de `UploadProjectZipUseCase` con el clasificador de dominio y los puertos explícitos). Los dos cambios con impacto de comportamiento son: la Fase 11.11 (tras subir un ZIP DevMind **ya no indexa automáticamente**; la indexación es una acción explícita del usuario mediante `POST /projects/:id/index`) y la Fase 11.12 (el proveedor de embeddings ahora **se reintenta ante fallos transitorios** y, si se rinde, devuelve un 503 con mensaje claro). Juntas hacen que los fallos del proveedor se toleren cuando son pasajeros y se comuniquen por HTTP cuando son reales, en lugar de tumbar la indexación en silencio. A ellas se suma la Fase 11.14, que protege la ruta de indexación —la más cara del sistema— con un guard de idempotencia (**409 si ya hay una indexación en curso**, evitando pasadas solapadas) y un rate limit por usuario. La Fase 11.15 es una pasada de **consistencia de nombres** (archivos, carpetas y una clase de error) sin impacto de comportamiento, que alinea el proyecto con sus propias convenciones. La Fase 11.16 **cierra dos huecos de cobertura** (test unitario del estado de indexación y test del rate limiting de los cuatro limiters, incluido el de indexación), sustituyendo comprobaciones manuales por tests automatizados. La Fase 11.17 elimina las **dependencias ocultas de `GEMINI_API_KEY` y `JWT_SECRET`** en la carga de la suite, inyectando valores dummy en el entorno de test para que no dependa de un `.env` presente (checkout limpio, CI). Y la Fase 11.18 **elimina la creación manual de archivos** (`POST .../files`) y toda su cadena de código muerto asociada, de modo que los archivos solo entran por la subida de ZIP; se conservan listar, ver y borrar. En conjunto, el proyecto queda más seguro, más simple, más resiliente y más honesto en cómo comunica los errores.

@@ -634,6 +634,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: Ya hay una indexación en curso para este proyecto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Demasiadas peticiones (límite de rate limit de indexación por usuario autenticado superado)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /projects/{id}/indexing-status:
     get:
@@ -684,9 +696,10 @@ paths:
         Genera el embedding de la pregunta, busca en PostgreSQL/pgvector los
         code chunks más parecidos dentro de ese proyecto (findSimilarByProjectId)
         y usa esos fragmentos como contexto para generar una respuesta.
-        Si el proyecto todavía no tiene embeddings generados (por ejemplo, la
-        indexación en segundo plano tras la subida del ZIP aún no ha terminado)
-        no habrá chunks relevantes que encontrar; en ese caso se devuelve una
+        Si el proyecto todavía no tiene embeddings generados (por ejemplo, el
+        usuario aún no ha lanzado la indexación con POST /projects/{id}/index, o
+        esta no ha terminado) no habrá chunks relevantes que encontrar; en ese
+        caso se devuelve una
         respuesta de fallback y una lista de fuentes vacía en lugar de llamar
         al generador de respuestas. Esa misma respuesta de fallback se devuelve
         cuando los chunks encontrados no superan el umbral de similitud
@@ -748,67 +761,6 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /projects/{projectId}/files:
-    post:
-      tags:
-        - Project Files
-      summary: Añadir un archivo a un proyecto
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: projectId
-          in: path
-          required: true
-          schema:
-            type: string
-          example: project-uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                path:
-                  type: string
-                  minLength: 1
-                  example: src/app.ts
-                language:
-                  type: string
-                  minLength: 1
-                  example: typescript
-                content:
-                  type: string
-                  example: "console.log('hello');"
-              required:
-                - path
-                - language
-                - content
-      responses:
-        "201":
-          description: Archivo creado correctamente
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectFile"
-        "400":
-          description: Body inválido
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "401":
-          description: Token ausente o inválido
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Proyecto no encontrado o no pertenece al usuario
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
     get:
       tags:
         - Project Files

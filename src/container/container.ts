@@ -28,8 +28,6 @@ import { PostgresProjectRepository } from "../infrastructure/repositoryAdapter/p
 
 
 //[IMPORTS PARA LA PARTE DE ARCHIVOS]
-import { CryptoFileHashGenerator } from "../infrastructure/fileAdapter/cryptoFileHashGenerator";
-import { CreateProjectFileUseCase } from "../application/projectFiles/createProjectFileUseCase";
 import { DeleteProjectFileUseCase } from "../application/projectFiles/deleteProjectFileUseCase";
 import { GetProjectFileByIdUseCase } from "../application/projectFiles/getProjectFileByIdUseCase";
 import { ListProjectFilesUseCase } from "../application/projectFiles/listProjectFilesUseCase";
@@ -107,7 +105,6 @@ const codeChunkEmbeddingRepository = new PostgresCodeChunkEmbeddingRepository(po
 const passwordHasher = new BcryptPasswordHasher();
 const tokenService = new JwtTokenService();
 const idGenerator = new CryptoIdGenerator();
-const fileHashGenerator = new CryptoFileHashGenerator();
 const zipExtractor = new AdmZipExtractor();
 const codeChunker = new LineCodeChunker();
 const delay = new TimeoutDelay();
@@ -192,13 +189,6 @@ export const container = {
   getProjectByIdUseCase: new GetProjectByIdUseCase(projectRepository),
 
   deleteProjectUseCase: new DeleteProjectUseCase(projectRepository),
-
-  createProjectFileUseCase: new CreateProjectFileUseCase(
-    projectRepository,
-    projectFileRepository,
-    idGenerator,
-    fileHashGenerator,
-  ),
 
   listProjectFilesUseCase: new ListProjectFilesUseCase(
     projectRepository,
