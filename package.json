@@ -1,11 +1,11 @@
 {
   "name": "devmind",
   "version": "1.0.0",
-  "description": "",
+  "description": "API backend con IA para el análisis y la consulta de proyectos software mediante lenguaje natural (RAG).",
   "license": "ISC",
-  "author": "",
+  "author": "Carlos",
   "type": "commonjs",
-  "main": "index.js",
+  "main": "dist/src/main.js",
   "directories": {
     "doc": "docs"
   },
