@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "API backend con IA para el análisis y la consulta de proyectos software mediante lenguaje natural (RAG).",
   "license": "ISC",
-  "author": "Carlos",
+  "author": "Carlos Morillas López",
   "type": "commonjs",
   "main": "dist/src/main.js",
   "directories": {

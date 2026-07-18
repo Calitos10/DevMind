@@ -11,7 +11,7 @@ Trabajo Fin de Máster · API backend con RAG (Retrieval-Augmented Generation) s
 | Recurso                      | Enlace                     |
 | ---------------------------- | -------------------------- |
 | **Aplicación desplegada**    | 🔗 _Pendiente de publicar_ |
-| **Presentación (slides)**    | 🔗 _Pendiente de publicar_ |
+| **Presentación (slides)**    | 📊 [docs/DevMind_Slides.pdf](docs/DevMind_Slides.pdf) |
 | **Vídeo explicativo**        | 🔗 _Pendiente de publicar_ |
 | **Repositorio del frontend** | 🔗 _Pendiente de publicar_ |
 
@@ -63,6 +63,12 @@ El resultado es una respuesta construida sobre el código real del proyecto, aco
 - **Cita siempre sus fuentes.** Cada respuesta devuelve la lista de archivos y líneas usadas, verificables por el usuario.
 - **Sabe decir "no lo sé".** Un umbral de distancia (`RAG_MAX_DISTANCE`) descarta los fragmentos irrelevantes. Si no queda ninguno, DevMind responde que no tiene información en lugar de inventar. Ver [§13](#13-decisiones-de-diseño).
 - **La indexación no bloquea al usuario.** Se ejecuta en segundo plano y su progreso es consultable.
+
+### Alcance del proyecto (backend) y el frontend
+
+> **Lo que constituye el TFM y se somete a evaluación es esta API backend**: su arquitectura hexagonal, el pipeline de RAG (indexación, embeddings, búsqueda semántica y respuesta con fuentes), la seguridad, los tests y las decisiones de diseño documentadas.
+>
+> Existe además un **frontend web** (React + Vite) que consume esta API para poder **usar y demostrar** el producto desde el navegador (subir un ZIP, indexar y preguntar). Ese frontend se **generó con IA** a partir de un _brief/prompt_ propio, tomando el contrato [`docs/openapi.yaml`](docs/openapi.yaml) como fuente de verdad: el diseño de producto y los flujos son míos, la implementación la produjo la IA. Queda documentado, con el prompt exacto, en [`docs/Frontend_generado_con_IA.md`](docs/Frontend_generado_con_IA.md).
 
 ---
 
@@ -840,7 +846,7 @@ Reconocidas de forma explícita, con su motivo:
 
 | Limitación                                                                                                                  | Estado                                                                                          |
 | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **La purga de invitados no es automática.** `purge-guests` existe y funciona, pero debe lanzarse a mano o por cron externo. | Un scheduler interno queda como mejora (ver la Fase 13 en `docs/Documento de diseño.md`).       |
+| **La purga de invitados no es automática.** `purge-guests` existe y funciona, pero debe lanzarse a mano o por cron externo. | Un scheduler interno queda como mejora (ver la Fase 13 en `docs/Memoria_Tecnica.md`).            |
 | **El proyecto de un invitado no se transfiere al registrarse.** Al crear cuenta, lo subido como invitado no migra.          | Decisión consciente: la migración añade complejidad que no aportaba al alcance del TFM.         |
 | **La indexación vive en el proceso de la API.** Corre en segundo plano, pero dentro del mismo proceso.                      | Con varias instancias o proyectos muy grandes, correspondería una cola externa (BullMQ, Redis). |
 | **`RAG_MAX_DISTANCE` no está calibrado empíricamente.** El valor por defecto es un punto de partida.                        | Requiere un conjunto de preguntas de evaluación con respuestas esperadas.                       |
@@ -864,9 +870,10 @@ En la carpeta `docs/` hay material técnico ampliado:
 
 | Documento                      | Contenido                                             |
 | ------------------------------ | ----------------------------------------------------- |
-| `docs/Documento de diseño.md`  | Diseño del proyecto y su evolución por fases (requisitos, casos de uso, decisiones) |
+| `docs/Memoria_Tecnica.md`      | **Memoria técnica**: recorrido paso a paso del desarrollo, desde la idea inicial hasta la construcción final del proyecto (requisitos, casos de uso, decisiones de diseño y todas las fases) |
 | `docs/Defensa_del_Proyecto.md` | Recorrido técnico detallado de cada flujo del sistema |
 | `docs/openapi.yaml`            | Contrato OpenAPI de la API (endpoints y esquemas)     |
+| `docs/Frontend_generado_con_IA.md` | Cómo se generó el frontend con IA y el _prompt_ exacto utilizado |
 
 ---
 

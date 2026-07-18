@@ -1,18 +1,17 @@
-# DevMind — Documento de Diseño
+# DevMind — Memoria Técnica
 
-**Trabajo de Fin de Máster · API backend con IA para el análisis y la consulta de proyectos software mediante lenguaje natural**
+**Trabajo de Fin de Máster · Recorrido paso a paso del desarrollo del proyecto DevMind, desde la idea inicial hasta su construcción final**
 
 | Campo | Valor |
 |-------|-------|
 | Proyecto | DevMind |
-| Tipo de documento | Documento de Diseño |
-| Autor | Carlos |
-| Titulación | Trabajo de Fin de Máster (TFM) |
+| Tipo de documento | Memoria Técnica (recorrido del desarrollo, fase a fase) |
+| Autor | Carlos Morillas López |
+| Titulación | Máster de Desarrollo con IA — BIG School |
+| Módulo | Módulo 12 · Proyecto Final |
 | Versión | 1.0 |
 | Fecha | Julio de 2026 |
 | Estado | Entregable |
-
-> _Los campos institucionales (titulación exacta, tutor/director y centro) quedan pendientes de completar por el autor._
 
 ---
 
@@ -20,8 +19,8 @@
 
 | Versión | Fecha | Autor | Descripción |
 |---------|-------|-------|-------------|
-| 0.1 – 0.13 | 2026 | Carlos | Redacción incremental del diseño a lo largo de las fases 0 a 13 del desarrollo. |
-| 1.0 | 2026-07-17 | Carlos | Consolidación en documento de diseño entregable: portada, control de versiones, resumen, convenciones, glosario e índice. |
+| 0.1 – 0.13 | 2026 | Carlos Morillas López | Redacción incremental del diseño a lo largo de las fases 0 a 13 del desarrollo. |
+| 1.0 | 2026-07-17 | Carlos Morillas López | Consolidación en memoria técnica entregable: portada, control de versiones, resumen, convenciones, glosario e índice. |
 
 > El histórico detallado de cambios y su trazabilidad se encuentra en el repositorio Git del proyecto.
 
@@ -31,7 +30,7 @@
 
 DevMind es una **API backend** que convierte un proyecto software en una **fuente de conocimiento consultable mediante lenguaje natural**. El sistema permite subir el código de un proyecto (comprimido en ZIP), indexarlo de forma semántica y formular preguntas en lenguaje natural que se responden apoyándose en el propio código, mediante una arquitectura de **Recuperación Aumentada por Generación (RAG)**.
 
-Este documento describe el diseño del sistema siguiendo el **proceso real de construcción, fase a fase**. Parte del análisis y la especificación de requisitos (historias de usuario, criterios de aceptación, casos de uso y priorización) y continúa con el diseño e implementación incremental de cada capacidad: autenticación, gestión de proyectos y archivos, persistencia en PostgreSQL, subida y sincronización de código, fragmentación (*chunking*), generación de *embeddings*, búsqueda semántica, respuestas RAG, indexación asíncrona, endurecimiento técnico, historial de conversaciones y modo invitado.
+Esta **memoria técnica** documenta el desarrollo del sistema **paso a paso**, siguiendo el **proceso real de construcción, fase a fase, desde la idea inicial hasta la versión final**. Parte del análisis y la especificación de requisitos (historias de usuario, criterios de aceptación, casos de uso y priorización) y continúa con el diseño e implementación incremental de cada capacidad: autenticación, gestión de proyectos y archivos, persistencia en PostgreSQL, subida y sincronización de código, fragmentación (*chunking*), generación de *embeddings*, búsqueda semántica, respuestas RAG, indexación asíncrona, endurecimiento técnico, historial de conversaciones y modo invitado.
 
 El diseño se sustenta en dos pilares metodológicos: una **arquitectura limpia/hexagonal** (separación en dominio, aplicación, infraestructura y transporte mediante puertos y adaptadores) y un desarrollo guiado por pruebas (**TDD**), de modo que cada requisito queda respaldado por pruebas unitarias, de integración y de extremo a extremo.
 
