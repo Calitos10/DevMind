@@ -1,6 +1,6 @@
 # Frontend de DevMind — generado con IA
 
-> **Contexto para la evaluación del TFM.** El núcleo del proyecto y lo que se somete a evaluación es la **API backend de DevMind** (arquitectura hexagonal, RAG, indexación, tests y decisiones de diseño). El **frontend** es una **capa cliente generada con IA** a partir del *brief/prompt* que se reproduce íntegro más abajo, tomando el contrato `openapi.yaml` como fuente de verdad. Se incluye únicamente para que la API pueda **usarse y demostrarse** con comodidad (subir un ZIP, indexar y preguntar desde el navegador), no como pieza a evaluar.
+> **Contexto.** El proyecto construido en este TFM es la **API backend de DevMind** (arquitectura hexagonal, RAG, indexación, tests y decisiones de diseño). Como para **probar y demostrar** la API desde el navegador (subir un ZIP, indexar y preguntar) hace falta una interfaz, el **frontend se generó con IA** a partir del *prompt/brief* que se reproduce íntegro más abajo, tomando el contrato `openapi.yaml` como fuente de verdad.
 >
 > Este documento deja constancia **honesta y trazable** de cómo se construyó el frontend: **el diseño de producto, los flujos, las páginas y las restricciones son míos** (los del brief); **la implementación la produjo una IA** a partir de esa especificación. Se conserva el prompt exacto por transparencia y reproducibilidad.
 

@@ -163,6 +163,7 @@ Se recomienda leer primero la sección [2. Análisis y especificación de requis
 - [Fase 12 — Guardado de historial de conversaciones](#fase-12--guardado-de-historial-de-conversaciones)
 - [Fase 13 — Modo invitado (onboarding sin registro)](#fase-13--modo-invitado-onboarding-sin-registro)
 - [Corrección — Reintentos y error tipado (503) en la generación de respuestas del RAG](#corrección--reintentos-y-error-tipado-503-en-la-generación-de-respuestas-del-rag)
+- [Preparación para el despliegue — endurecimiento de red y base de datos](#preparación-para-el-despliegue--endurecimiento-de-red-y-base-de-datos)
 
 ---
 
@@ -9333,4 +9334,46 @@ La Fase 11.12 había añadido **reintentos con backoff** y **traducción a un `5
 ```
 
 Con esto, ante un fallo transitorio de Gemini al preguntar, DevMind **reintenta** y, si el problema persiste, devuelve un **`503` con un mensaje claro** en lugar de un `500` genérico. Los dos caminos del RAG que dependen de Gemini (embedding de la pregunta y generación de la respuesta) quedan protegidos de la misma forma.
+
+---
+
+## Preparación para el despliegue — endurecimiento de red y base de datos
+
+Antes de publicar DevMind (API en Railway, frontend en Vercel) se revisó el código pensando en cómo se comporta **en producción: detrás de un proxy inverso y contra una base de datos gestionada**. De esa revisión salieron dos ajustes pequeños pero necesarios para que la aplicación funcione correctamente en el despliegue. Ninguno cambia la lógica de negocio; son configuración de infraestructura.
+
+### Confianza en el proxy (`trust proxy`)
+
+**Problema.** En producción la API no recibe las peticiones directamente, sino a través del **proxy inverso** de la plataforma (Railway/Render). Ese proxy pone la IP real del cliente en la cabecera `X-Forwarded-For`, pero Express, por defecto, no se fía de esa cabecera y toma como IP la del propio proxy. El rate limit de autenticación limita **por IP**, así que sin este ajuste vería a **todos los visitantes como una sola IP** (la del proxy) y los metería en el mismo cubo: como el frontend llama a `POST /auth/guest` en cada carga, unas pocas visitas agotarían el límite y bloquearían a todo el mundo.
+
+**Cambio realizado.** En `app.ts` se indica a Express que confíe en el primer salto de proxy:
+
+```ts
+app.set("trust proxy", 1);
+```
+
+Con esto, `req.ip` pasa a ser la IP real del cliente y el rate limit por IP vuelve a discriminar correctamente entre visitantes. En local (sin proxy) no hay cabecera `X-Forwarded-For`, así que el ajuste es inocuo.
+
+### SSL condicional en la conexión a PostgreSQL
+
+**Problema.** Algunos proveedores de PostgreSQL gestionado (Neon, Supabase, Render externo) **exigen conexión por SSL**; otros, como la **red interna de Railway**, no lo usan. El _pool_ de conexión estaba fijado sin SSL, lo que impediría conectar contra un proveedor que lo requiera (y el despliegue no arrancaría).
+
+**Cambio realizado.** En `postgresPool.ts` el SSL se activa mediante una variable de entorno, de modo que el mismo código sirve para ambos escenarios sin tocarlo:
+
+```ts
+const useSsl = process.env.DATABASE_SSL === "true";
+
+export const postgresPool = new Pool({
+  connectionString,
+  ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+});
+```
+
+Se documenta la nueva variable en `.env.example` (`DATABASE_SSL=false` por defecto; `true` solo en el proveedor que lo exija).
+
+### Verificación
+
+- `npm run typecheck` → sin errores.
+- Ninguno de los dos cambios altera el comportamiento en local ni la suite de tests, que siguen usando la base de datos local sin SSL y sin proxy.
+
+Con estos dos ajustes, la API queda lista para funcionar correctamente **detrás del proxy de la plataforma** y contra una **base de datos gestionada con o sin SSL**, sin cambios en la lógica de la aplicación.
 

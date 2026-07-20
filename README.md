@@ -64,11 +64,11 @@ El resultado es una respuesta construida sobre el código real del proyecto, aco
 - **Sabe decir "no lo sé".** Un umbral de distancia (`RAG_MAX_DISTANCE`) descarta los fragmentos irrelevantes. Si no queda ninguno, DevMind responde que no tiene información en lugar de inventar. Ver [§13](#13-decisiones-de-diseño).
 - **La indexación no bloquea al usuario.** Se ejecuta en segundo plano y su progreso es consultable.
 
-### Alcance del proyecto (backend) y el frontend
+### Alcance del proyecto
 
-> **Lo que constituye el TFM y se somete a evaluación es esta API backend**: su arquitectura hexagonal, el pipeline de RAG (indexación, embeddings, búsqueda semántica y respuesta con fuentes), la seguridad, los tests y las decisiones de diseño documentadas.
+> **El proyecto que he construido en este TFM es la API backend de DevMind**: su arquitectura hexagonal, el pipeline de RAG (indexación, embeddings, búsqueda semántica y respuesta con fuentes), la seguridad, los tests y las decisiones de diseño documentadas.
 >
-> Existe además un **frontend web** (React + Vite) que consume esta API para poder **usar y demostrar** el producto desde el navegador (subir un ZIP, indexar y preguntar). Ese frontend se **generó con IA** a partir de un _brief/prompt_ propio, tomando el contrato [`docs/openapi.yaml`](docs/openapi.yaml) como fuente de verdad: el diseño de producto y los flujos son míos, la implementación la produjo la IA. Queda documentado, con el prompt exacto, en [`docs/Frontend_generado_con_IA.md`](docs/Frontend_generado_con_IA.md).
+> Como para **probar la API en el despliegue** desde el navegador (subir un ZIP, indexar y preguntar) hace falta una interfaz, he **generado un frontend web (React + Vite) con IA** a partir de un _prompt_ propio y específico, usando el contrato [`docs/openapi.yaml`](docs/openapi.yaml) como fuente de verdad. El diseño de producto y los flujos son míos; la implementación del frontend la produjo la IA. El prompt exacto está documentado en [`docs/Frontend_generado_con_IA.md`](docs/Frontend_generado_con_IA.md).
 
 ---
 
