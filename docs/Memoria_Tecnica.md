@@ -21,6 +21,7 @@
 |---------|-------|-------|-------------|
 | 0.1 – 0.13 | 2026 | Carlos Morillas López | Redacción incremental del diseño a lo largo de las fases 0 a 13 del desarrollo. |
 | 1.0 | 2026-07-17 | Carlos Morillas López | Consolidación en memoria técnica entregable: portada, control de versiones, resumen, convenciones, glosario e índice. |
+| 1.1 | 2026-07-20 | Carlos Morillas López | Documentación de la Fase 17: refactor de la subida de ZIP para limitar el consumo de memoria en producción. |
 
 > El histórico detallado de cambios y su trazabilidad se encuentra en el repositorio Git del proyecto.
 
@@ -164,6 +165,7 @@ Se recomienda leer primero la sección [2. Análisis y especificación de requis
 - [Fase 13 — Modo invitado (onboarding sin registro)](#fase-13--modo-invitado-onboarding-sin-registro)
 - [Corrección — Reintentos y error tipado (503) en la generación de respuestas del RAG](#corrección--reintentos-y-error-tipado-503-en-la-generación-de-respuestas-del-rag)
 - [Preparación para el despliegue — endurecimiento de red y base de datos](#preparación-para-el-despliegue--endurecimiento-de-red-y-base-de-datos)
+- [Fase 17 — Refactor de la subida de ZIP para controlar el uso de memoria](#fase-17--refactor-de-la-subida-de-zip-para-controlar-el-uso-de-memoria)
 
 ---
 
@@ -9377,3 +9379,180 @@ Se documenta la nueva variable en `.env.example` (`DATABASE_SSL=false` por defec
 
 Con estos dos ajustes, la API queda lista para funcionar correctamente **detrás del proxy de la plataforma** y contra una **base de datos gestionada con o sin SSL**, sin cambios en la lógica de la aplicación.
 
+---
+
+## Fase 17 — Refactor de la subida de ZIP para controlar el uso de memoria
+
+### Contexto y problema detectado en producción
+
+Durante las pruebas locales, DevMind podía recibir el ZIP del propio proyecto sin problemas. Sin embargo, al desplegar la API en Railway e intentar subir `DevMind.zip`, de **103,8 MB**, el frontend mostraba inicialmente el mensaje _"Zip file exceeds the maximum allowed size"_. Tras aumentar `MAX_ZIP_SIZE_MB` en las variables del entorno de producción, el error cambió: el frontend indicaba que no podía conectarse con el servidor y Railway registraba un `502 Bad Gateway` en `POST /projects/:id/upload`.
+
+Este cambio de error fue importante. El primer mensaje era una respuesta controlada de Multer (`LIMIT_FILE_SIZE`); el segundo significaba que el frontend ya no recibía una respuesta HTTP de la aplicación. El `OPTIONS` de CORS respondía correctamente con `204` y los ZIP pequeños seguían funcionando, por lo que se descartaron problemas de CORS, autenticación, URL de la API y disponibilidad general del servicio.
+
+Los datos detallados de Railway mostraron que el proxy había recibido la petición completa:
+
+```txt
+httpStatus: 502
+rxBytes: 103827690
+upstreamRqDuration: 16085 ms
+upstreamErrors: connection closed unexpectedly
+```
+
+Por tanto, Railway no estaba rechazando el tamaño del cuerpo HTTP: la conexión con la instancia se cerraba **después de recibir el ZIP**. Los logs de ejecución confirmaron finalmente la causa:
+
+```txt
+FATAL ERROR: Reached heap limit Allocation failed
+JavaScript heap out of memory
+```
+
+El proceso de Node alcanzaba aproximadamente **486 MB de heap**, abortaba y Railway arrancaba una instancia nueva. El `502` era solo la consecuencia externa de esa caída.
+
+### Por qué funcionaba en local
+
+El comportamiento diferente no se debía a que el código local y el desplegado aplicasen reglas distintas. En local, el equipo de desarrollo disponía de más memoria, la transferencia se realizaba por `localhost` y no existía un proxy externo. En producción, la aplicación ejecutaba el mismo flujo dentro de los límites de memoria del proceso de Node y del contenedor.
+
+Además, el tamaño comprimido no representaba el consumo real. El pipeline original llegaba a conservar simultáneamente:
+
+- El ZIP comprimido completo en `multer.memoryStorage()`.
+- Las entradas descomprimidas por `AdmZip`.
+- El contenido de cada entrada convertido de `Buffer` a `string`.
+- El array con todos los archivos extraídos.
+- Los objetos creados o actualizados, incluyendo otra vez su contenido.
+- La respuesta JSON con los contenidos completos de todos los archivos.
+
+Un ZIP de 103,8 MB podía, por tanto, ocupar varias veces ese tamaño durante el procesamiento.
+
+### Primer ajuste: filtrar antes de descomprimir
+
+DevMind ya ignoraba carpetas como `node_modules`, `.git`, `dist`, `build`, `coverage` y `.next`, además de extensiones binarias. Sin embargo, la clasificación se realizaba en `UploadProjectZipUseCase` **después** de que `AdmZipExtractor` hubiese ejecutado `entry.getData()` sobre todas las entradas. Las carpetas se ignoraban desde el punto de vista funcional —no se guardaban ni generaban chunks—, pero ya habían consumido memoria.
+
+Se añadió `ProjectFileClassifier.isRelevantPath(path)`, capaz de decidir mediante la ruta si una entrada debe procesarse. `AdmZipExtractor` usa ahora este método antes de llamar a `getData()`. La comprobación del tamaño total descomprimido también se calcula sobre las entradas relevantes. La detección mediante byte nulo se mantiene después de leer el contenido, porque esa regla no puede aplicarse utilizando solamente la ruta.
+
+El orden pasó de:
+
+```txt
+descomprimir todas las entradas → clasificar → descartar ignoradas
+```
+
+a:
+
+```txt
+inspeccionar rutas → descartar ignoradas → descomprimir las relevantes
+```
+
+### Segundo ajuste: sacar el ZIP comprimido del heap
+
+El endpoint utilizaba `multer.memoryStorage()`, por lo que el archivo comprimido completo se almacenaba como `req.file.buffer`. Se sustituyó por el almacenamiento temporal en disco de Multer, utilizando el directorio temporal del sistema. El controlador pasa ahora la ruta del archivo al caso de uso y al extractor.
+
+Para representar las dos fuentes admitidas —`Buffer` en pruebas y ruta en producción—, el puerto define `ZipSource = Buffer | string`. El adaptador admite ambas formas, lo que permitió conservar tests unitarios rápidos sin volver a introducir el buffer en el endpoint real.
+
+La eliminación del archivo temporal se garantiza con `finally`:
+
+```ts
+try {
+  return await uploadProjectZipUseCase.execute({ zipSource: file.path });
+} finally {
+  await unlink(file.path).catch(() => undefined);
+}
+```
+
+De esta forma, el temporal se elimina tanto si la subida termina correctamente como si el ZIP es inválido o falla la sincronización.
+
+### Tercer ajuste: procesamiento incremental de las entradas
+
+Los dos ajustes anteriores reducían el consumo, pero una nueva prueba en Railway seguía terminando con `JavaScript heap out of memory`. El motivo restante era estructural: `ZipExtractor.extract()` devolvía `Promise<ExtractedProjectFile[]>`. Ese contrato obligaba al adaptador a descomprimir y conservar **todos los archivos relevantes** antes de que el caso de uso pudiera empezar a procesarlos.
+
+El puerto se modificó para devolver un flujo asíncrono:
+
+```ts
+extract(zipSource: ZipSource): AsyncIterable<ExtractedProjectFile>;
+```
+
+El puerto se preparó para un generador asíncrono (`async *`) y `UploadProjectZipUseCase` pasó a consumirlo con `for await...of`. Para cada archivo recibido, calcula el hash, guarda o actualiza el registro y genera sus chunks antes de solicitar el siguiente.
+
+```txt
+entrada 1 → extraer → guardar → generar chunks → liberar
+entrada 2 → extraer → guardar → generar chunks → liberar
+…
+```
+
+El conjunto `incomingFilePaths` se construye durante el recorrido y se utiliza al final para eliminar de PostgreSQL los archivos que ya no aparecen en el ZIP. Así se conserva la sincronización de resubidas sin necesitar el array completo de contenidos.
+
+### Cuarto ajuste: sustituir `adm-zip` por un lector realmente perezoso
+
+La primera implementación incremental mantuvo `adm-zip`, pero una nueva prueba en Railway volvió a alcanzar el mismo límite de heap. Esto reveló una diferencia importante entre **entregar contenidos uno a uno** y **leer el ZIP de forma realmente perezosa**.
+
+Aunque el caso de uso ya no acumulaba contenidos, `adm-zip` ejecutaba `getEntries()` y construía en memoria el catálogo completo del archivo. El ZIP de DevMind incluía un número muy alto de entradas —especialmente por `node_modules`—; crear un objeto JavaScript para cada ruta agotaba el heap antes incluso de que el clasificador pudiera descartarlas. El stack trace de V8, con asignaciones de mapas, diccionarios y propiedades, era coherente con esa materialización masiva de metadatos.
+
+Se sustituyó el adaptador de producción por `YauzlZipExtractor`, utilizando `yauzl` con `lazyEntries: true`. Este modo solo lee la siguiente entrada cuando se llama a `readEntry()`. El adaptador inspecciona su ruta y:
+
+- Si pertenece a una carpeta ignorada o tiene una extensión binaria, solicita directamente la entrada siguiente sin abrir su contenido.
+- Si es relevante, suma su tamaño al límite descomprimido, abre un stream solo para esa entrada, produce el archivo y espera a que el caso de uso termine de procesarlo.
+- Al finalizar o ante cualquier error, cierra el descriptor del ZIP mediante `finally`.
+
+`adm-zip` se conserva únicamente como dependencia de desarrollo para construir ZIP pequeños en los tests. Ya no forma parte del camino de ejecución de producción.
+
+### Respuesta HTTP sin duplicar el código fuente
+
+Incluso con extracción incremental, los arrays `createdFiles`, `updatedFiles`, `deletedFiles` y `unchangedFiles` conservaban entidades `ProjectFile` completas, incluido `content`. Además de retener memoria hasta finalizar el caso de uso, Express debía serializar de nuevo todo el código en la respuesta HTTP.
+
+La respuesta de subida mantiene su resumen y las cuatro listas, pero ahora devuelve `ProjectFileMetadata`, que contiene:
+
+```txt
+id, projectId, path, language, size, hash, createdAt
+```
+
+El campo `content` deja de formar parte de esta respuesta. El contenido sigue guardándose en PostgreSQL y continúa disponible mediante los endpoints específicos de archivos; simplemente no se duplica como resultado de una operación de subida. El contrato se actualizó también en `docs/openapi.yaml`.
+
+### Arquitectura resultante
+
+```txt
+Navegador
+  │ multipart/form-data
+  ▼
+Multer → ZIP temporal en disco
+  │ ruta del temporal
+  ▼
+YauzlZipExtractor (`lazyEntries`)
+  ├─ inspecciona rutas sin descomprimir
+  ├─ descarta carpetas y extensiones ignoradas
+  └─ entrega una entrada relevante cada vez
+       │
+       ▼
+UploadProjectZipUseCase
+  ├─ hash y sincronización
+  ├─ persistencia del archivo
+  ├─ generación de chunks
+  └─ metadatos para la respuesta
+       │
+       ▼
+finally → eliminación del ZIP temporal
+```
+
+La separación hexagonal se mantiene: la aplicación consume el puerto `ZipExtractor`, mientras que el conocimiento de `AdmZip`, del formato ZIP y del origen físico del archivo permanece en infraestructura. El controlador solo gestiona el ciclo de vida del temporal asociado a HTTP.
+
+### Verificación
+
+Tras la refactorización se actualizaron las pruebas del caso de uso y del endpoint de subida para reflejar el flujo incremental y la respuesta sin contenido. La verificación local completa fue:
+
+```txt
+✅ npm run typecheck → sin errores
+✅ npm test → 177/177 tests en verde (44 archivos)
+✅ Tests unitarios del clasificador y de UploadProjectZipUseCase
+✅ Tests de integración del endpoint multipart de subida
+✅ Contrato OpenAPI actualizado con ProjectFileMetadata
+✅ git diff --check → sin errores
+```
+
+### Resultado y aprendizaje
+
+La incidencia mostró que **aceptar un tamaño de archivo no equivale a poder procesarlo con memoria acotada**. `MAX_ZIP_SIZE_MB` y `MAX_ZIP_UNCOMPRESSED_SIZE_MB` siguen siendo defensas necesarias, pero no sustituyen una arquitectura que controle el ciclo de vida de los datos.
+
+La solución final combina cuatro medidas complementarias:
+
+1. **No descomprimir lo que se va a ignorar.**
+2. **No almacenar el archivo comprimido dentro del heap de Node.**
+3. **No acumular ni devolver simultáneamente todos los contenidos extraídos.**
+4. **No materializar en memoria el catálogo completo de entradas del ZIP.**
+
+Cada ajuste elimina una copia distinta de los datos; ninguno de ellos, por separado, resolvía todo el problema. El diagnóstico se apoyó en evidencia de producción —códigos HTTP, bytes recibidos, métricas y logs del recolector de basura de V8— en lugar de limitarse a aumentar la memoria o el tamaño permitido. El resultado es un pipeline de subida más escalable, predecible y adecuado para ejecutarse en un entorno con recursos limitados como Railway.

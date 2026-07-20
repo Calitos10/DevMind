@@ -41,7 +41,7 @@ import { PostgresProjectFileRepository } from "../infrastructure/repositoryAdapt
 
 
 //[IMPORTS PARA LA PARTE DE SUBIR ZIP]
-import { AdmZipExtractor } from "../infrastructure/uploadZipAdapter/admZipExtractor";
+import { YauzlZipExtractor } from "../infrastructure/uploadZipAdapter/yauzlZipExtractor";
 import { UploadProjectZipUseCase } from "../application/uploadZip/uploadProjectZipUseCase";
 
 
@@ -111,7 +111,7 @@ const conversationRepository = new PostgresConversationRepository(postgresPool);
 const passwordHasher = new BcryptPasswordHasher();
 const tokenService = new JwtTokenService();
 const idGenerator = new CryptoIdGenerator();
-const zipExtractor = new AdmZipExtractor();
+const zipExtractor = new YauzlZipExtractor();
 const codeChunker = new LineCodeChunker();
 const delay = new TimeoutDelay();
 const embeddingGenerator: EmbeddingGenerator =

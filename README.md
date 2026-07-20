@@ -108,8 +108,8 @@ El resultado es una respuesta construida sobre el código real del proyecto, aco
 
 | Tecnología  | Uso                                                   |
 | ----------- | ----------------------------------------------------- |
-| **multer**  | Recepción del ZIP (`multipart/form-data`, en memoria) |
-| **adm-zip** | Extracción del contenido del ZIP                      |
+| **multer**  | Recepción del ZIP (`multipart/form-data`, en disco temporal) |
+| **yauzl**   | Lectura incremental del contenido del ZIP                    |
 | **dotenv**  | Carga de variables de entorno                         |
 
 ### Testing
@@ -367,7 +367,7 @@ DevMind/
 │   │   ├── genkit/                 # ai.ts, generadores de embeddings y respuestas
 │   │   │   └── testing/            # Dobles de test de los generadores
 │   │   ├── authAdapter/            # jwtTokenService, bcryptPasswordHasher, cryptoIdGenerator
-│   │   ├── uploadZipAdapter/       # admZipExtractor
+│   │   ├── uploadZipAdapter/       # yauzlZipExtractor
 │   │   ├── timeDelayAdapter/       # timeoutDelay
 │   │   ├── retry/                  # retryWithBackoff
 │   │   └── config/env.ts           # Lectura y validación de variables de entorno
@@ -615,7 +615,7 @@ Todas las respuestas de error comparten forma:
 ```txt
 ZIP subido
    ↓
-AdmZipExtractor extrae los archivos
+YauzlZipExtractor recorre los archivos de forma incremental
    ↓
 ProjectFileClassifier filtra (carpetas ignoradas, binarios, markdown, bytes nulos)
    ↓
