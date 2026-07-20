@@ -43,9 +43,16 @@ const BINARY_EXTENSIONS = [
 const NULL_BYTE = String.fromCharCode(0);
 
 export class ProjectFileClassifier {
+  // Permite decidir si una entrada del ZIP merece ser extraida usando solo su
+  // ruta. Es importante llamar a este metodo antes de cargar su contenido en
+  // memoria.
+  isRelevantPath(path: string): boolean {
+    return !this.isIgnored(path) && !this.hasBinaryExtension(path);
+  }
+
   // Un archivo es relevante si no está en una carpeta ignorada ni es binario.
   isRelevant(file: { path: string; content: string }): boolean {
-    return !this.isIgnored(file.path) && !this.isBinary(file);
+    return this.isRelevantPath(file.path) && !this.hasNullByte(file.content);
   }
 
   detectLanguage(path: string): string {
@@ -63,10 +70,6 @@ export class ProjectFileClassifier {
     const pathParts = path.replaceAll("\\", "/").split("/");
 
     return pathParts.some((part) => IGNORED_FOLDERS.has(part));
-  }
-
-  private isBinary(file: { path: string; content: string }): boolean {
-    return this.hasBinaryExtension(file.path) || this.hasNullByte(file.content);
   }
 
   private hasNullByte(content: string): boolean {

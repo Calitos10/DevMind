@@ -52,6 +52,16 @@ describe("ProjectFileClassifier", () => {
     });
   });
 
+  describe("isRelevantPath", () => {
+    it("rejects ignored folders and binary extensions without file content", () => {
+      expect(classifier.isRelevantPath("node_modules/library/index.js")).toBe(
+        false,
+      );
+      expect(classifier.isRelevantPath("src/assets/logo.png")).toBe(false);
+      expect(classifier.isRelevantPath("src/index.ts")).toBe(true);
+    });
+  });
+
   describe("detectLanguage", () => {
     it("detects the language from the file extension", () => {
       expect(classifier.detectLanguage("a.ts")).toBe("typescript");
