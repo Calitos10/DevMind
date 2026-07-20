@@ -1,6 +1,7 @@
 //Fichero del controlador de project, este fichero contiene los metodos encargados
 //  de conectar las peticiones con los casos de uso y devolver la respuesta
 import type { Request, Response } from "express";
+import { unlink } from "node:fs/promises";
 
 import type { AuthenticatedRequest } from "../types/authenticatedRequest";
 import { ZipFileRequiredError } from "../../../shared/errors/zipFileRequiredError";
@@ -78,13 +79,17 @@ export class ProjectController {
       throw new ZipFileRequiredError();
     }
 
-    const result = await this.uploadProjectZipUseCase.execute({
-      projectId: authenticatedReq.params.id as string,
-      ownerId: authenticatedReq.user.userId,
-      zipBuffer: authenticatedReq.file.buffer,
-    });
+    try {
+      const result = await this.uploadProjectZipUseCase.execute({
+        projectId: authenticatedReq.params.id as string,
+        ownerId: authenticatedReq.user.userId,
+        zipSource: authenticatedReq.file.path,
+      });
 
-    return res.status(201).json(result);
+      return res.status(201).json(result);
+    } finally {
+      await unlink(authenticatedReq.file.path).catch(() => undefined);
+    }
   }
   async index(req: Request, res: Response) {
     const authenticatedReq = req as AuthenticatedRequest;

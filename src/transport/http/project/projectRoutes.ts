@@ -1,6 +1,7 @@
 //Fichero que construye el ruter que route.ts usa para la parte de proyectos
 //Crea el controlador apartir del fichero controlador pasandole mediante el container las dependencias que neceista
 import { Router } from "express";
+import { tmpdir } from "node:os";
 
 import { ProjectController } from "./projectController";
 import { projectSchema, askProjectQuestionSchema } from "./projectSchemas";
@@ -32,7 +33,7 @@ const projectController = new ProjectController(
 );
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+  dest: tmpdir(),
   limits: {
     fileSize: env.upload.maxZipSizeMb * 1024 * 1024,
   },

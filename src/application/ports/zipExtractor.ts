@@ -3,6 +3,8 @@ export type ExtractedProjectFile = {
   content: string;
 };
 
+export type ZipSource = Buffer | string;
+
 export interface ZipExtractor {
-  extract(zipBuffer: Buffer): Promise<ExtractedProjectFile[]>;
+  extract(zipSource: ZipSource): Promise<ExtractedProjectFile[]>;
 }

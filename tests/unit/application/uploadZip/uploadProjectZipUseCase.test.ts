@@ -15,7 +15,7 @@ class FakeZipExtractor implements ZipExtractor {
 
   constructor(private readonly files: ExtractedProjectFile[]) {}
 
-  async extract(_zipBuffer: Buffer): Promise<ExtractedProjectFile[]> {
+  async extract(_zipSource: Buffer | string): Promise<ExtractedProjectFile[]> {
     this.wasCalled = true;
 
     return this.files;
@@ -108,7 +108,7 @@ describe("UploadProjectZipUseCase", () => {
     const result = await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(result.projectId).toBe("project-1");
@@ -187,7 +187,7 @@ describe("UploadProjectZipUseCase", () => {
     await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(
@@ -235,7 +235,7 @@ describe("UploadProjectZipUseCase", () => {
       useCase.execute({
         projectId: "project-1",
         ownerId: "user-1",
-        zipBuffer: Buffer.from("fake zip content"),
+        zipSource: Buffer.from("fake zip content"),
       }),
     ).rejects.toThrow("Project not found");
 
@@ -304,7 +304,7 @@ describe("UploadProjectZipUseCase", () => {
     const result = await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(result.projectId).toBe("project-1");
@@ -376,7 +376,7 @@ describe("UploadProjectZipUseCase", () => {
       useCase.execute({
         projectId: "project-1",
         ownerId: "user-1",
-        zipBuffer: Buffer.from("fake zip content"),
+        zipSource: Buffer.from("fake zip content"),
       }),
     ).rejects.toThrow("No valid project files found");
 
@@ -430,7 +430,7 @@ describe("UploadProjectZipUseCase", () => {
     const result = await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(result.projectId).toBe("project-1");
@@ -514,7 +514,7 @@ describe("UploadProjectZipUseCase", () => {
     await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(
@@ -571,7 +571,7 @@ describe("UploadProjectZipUseCase", () => {
     const result = await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(result.projectId).toBe("project-1");
@@ -660,7 +660,7 @@ describe("UploadProjectZipUseCase", () => {
     await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(
@@ -728,7 +728,7 @@ describe("UploadProjectZipUseCase", () => {
     const result = await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(result.projectId).toBe("project-1");
@@ -818,7 +818,7 @@ describe("UploadProjectZipUseCase", () => {
     const result = await useCase.execute({
       projectId: "project-1",
       ownerId: "user-1",
-      zipBuffer: Buffer.from("fake zip content"),
+      zipSource: Buffer.from("fake zip content"),
     });
 
     expect(result.summary).toMatchObject({

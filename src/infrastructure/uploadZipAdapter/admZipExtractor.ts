@@ -13,8 +13,8 @@ const BYTES_PER_MB = 1024 * 1024;
 export class AdmZipExtractor implements ZipExtractor {
   private readonly fileClassifier = new ProjectFileClassifier();
 
-  async extract(zipBuffer: Buffer): Promise<ExtractedProjectFile[]> {
-    const zip = new AdmZip(zipBuffer);
+  async extract(zipSource: Buffer | string): Promise<ExtractedProjectFile[]> {
+    const zip = new AdmZip(zipSource);
     const entries = zip.getEntries().filter((entry) => {
       if (entry.isDirectory) return false;
 

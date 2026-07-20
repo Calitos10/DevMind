@@ -12,7 +12,7 @@ import { ProjectFileClassifier } from "../../domain/services/projectFileClassifi
 type UploadProjectZipUseCaseInput = {
   projectId: string;
   ownerId: string;
-  zipBuffer: Buffer;
+  zipSource: Buffer | string;
 };
 
 export class UploadProjectZipUseCase {
@@ -39,7 +39,7 @@ export class UploadProjectZipUseCase {
 
     //Extrae los archivos del buffer usando el zipExtractor y valida si los archivos extraídos son válidos
 
-    const extractedFiles = await this.zipExtractor.extract(input.zipBuffer);
+    const extractedFiles = await this.zipExtractor.extract(input.zipSource);
 
     const validFiles = extractedFiles.filter((extractedFile) =>
       this.fileClassifier.isRelevant(extractedFile),
