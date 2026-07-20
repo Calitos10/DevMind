@@ -15,10 +15,12 @@ class FakeZipExtractor implements ZipExtractor {
 
   constructor(private readonly files: ExtractedProjectFile[]) {}
 
-  async extract(_zipSource: Buffer | string): Promise<ExtractedProjectFile[]> {
+  async *extract(
+    _zipSource: Buffer | string,
+  ): AsyncIterable<ExtractedProjectFile> {
     this.wasCalled = true;
 
-    return this.files;
+    yield* this.files;
   }
 }
 
@@ -130,7 +132,6 @@ describe("UploadProjectZipUseCase", () => {
       projectId: "project-1",
       path: "src/index.ts",
       language: "typescript",
-      content: "console.log('hello');",
       size: Buffer.byteLength("console.log('hello');", "utf8"),
     });
 
@@ -141,7 +142,6 @@ describe("UploadProjectZipUseCase", () => {
       projectId: "project-1",
       path: "package.json",
       language: "json",
-      content: '{"name":"devmind-test"}',
       size: Buffer.byteLength('{"name":"devmind-test"}', "utf8"),
     });
 
@@ -326,7 +326,6 @@ describe("UploadProjectZipUseCase", () => {
       projectId: "project-1",
       path: "src/index.ts",
       language: "typescript",
-      content: "console.log('hello');",
     });
 
     expect(projectFileRepository.projectFiles).toHaveLength(1);
@@ -451,7 +450,6 @@ describe("UploadProjectZipUseCase", () => {
       id: "existing-file-1",
       projectId: "project-1",
       path: "src/index.ts",
-      content: existingContent,
       hash: calculateHash(existingContent),
     });
 
@@ -593,7 +591,6 @@ describe("UploadProjectZipUseCase", () => {
       projectId: "project-1",
       path: "src/index.ts",
       language: "typescript",
-      content: newContent,
       size: Buffer.byteLength(newContent, "utf8"),
       hash: calculateHash(newContent),
     });
@@ -749,14 +746,12 @@ describe("UploadProjectZipUseCase", () => {
       id: "existing-file-2",
       projectId: "project-1",
       path: "src/old.ts",
-      content: oldContent,
     });
 
     expect(result.files.unchanged[0]).toMatchObject({
       id: "existing-file-1",
       projectId: "project-1",
       path: "src/index.ts",
-      content: indexContent,
     });
 
     expect(projectFileRepository.projectFiles).toHaveLength(1);
@@ -835,7 +830,6 @@ describe("UploadProjectZipUseCase", () => {
       projectId: "project-1",
       path: "src/index.ts",
       language: "typescript",
-      content: "console.log('hello');",
     });
 
     expect(projectFileRepository.projectFiles).toHaveLength(1);

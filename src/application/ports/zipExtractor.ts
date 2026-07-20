@@ -6,5 +6,5 @@ export type ExtractedProjectFile = {
 export type ZipSource = Buffer | string;
 
 export interface ZipExtractor {
-  extract(zipSource: ZipSource): Promise<ExtractedProjectFile[]>;
+  extract(zipSource: ZipSource): AsyncIterable<ExtractedProjectFile>;
 }

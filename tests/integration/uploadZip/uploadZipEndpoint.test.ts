@@ -84,7 +84,6 @@ describe("POST /projects/:projectId/upload", () => {
       projectId,
       path: "src/index.ts",
       language: "typescript",
-      content: "console.log('hello from zip');",
       size: Buffer.byteLength("console.log('hello from zip');", "utf8"),
     });
 
@@ -92,7 +91,6 @@ describe("POST /projects/:projectId/upload", () => {
       projectId,
       path: "package.json",
       language: "json",
-      content: '{"name":"uploaded-project"}',
       size: Buffer.byteLength('{"name":"uploaded-project"}', "utf8"),
     });
   });
@@ -434,7 +432,6 @@ describe("POST /projects/:projectId/upload", () => {
       projectId,
       path: "src/index.ts",
       language: "typescript",
-      content: "console.log('valid file');",
       size: Buffer.byteLength("console.log('valid file');", "utf8"),
     });
 
@@ -597,7 +594,6 @@ describe("POST /projects/:projectId/upload", () => {
       projectId,
       path: "src/new.ts",
       language: "typescript",
-      content: "console.log('new file');",
       size: Buffer.byteLength("console.log('new file');", "utf8"),
     });
 
@@ -605,7 +601,6 @@ describe("POST /projects/:projectId/upload", () => {
       projectId,
       path: "src/app.ts",
       language: "typescript",
-      content: "export const app = 'v2';",
       size: Buffer.byteLength("export const app = 'v2';", "utf8"),
     });
 
@@ -613,14 +608,12 @@ describe("POST /projects/:projectId/upload", () => {
       projectId,
       path: "src/old.ts",
       language: "typescript",
-      content: "console.log('old file');",
     });
 
     expect(secondUploadResponse.body.files.unchanged[0]).toMatchObject({
       projectId,
       path: "src/index.ts",
       language: "typescript",
-      content: "console.log('index v1');",
     });
 
     const listFilesResponse = await request(app)

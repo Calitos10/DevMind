@@ -107,19 +107,19 @@ components:
             created:
               type: array
               items:
-                $ref: "#/components/schemas/ProjectFile"
+                $ref: "#/components/schemas/ProjectFileMetadata"
             updated:
               type: array
               items:
-                $ref: "#/components/schemas/ProjectFile"
+                $ref: "#/components/schemas/ProjectFileMetadata"
             deleted:
               type: array
               items:
-                $ref: "#/components/schemas/ProjectFile"
+                $ref: "#/components/schemas/ProjectFileMetadata"
             unchanged:
               type: array
               items:
-                $ref: "#/components/schemas/ProjectFile"
+                $ref: "#/components/schemas/ProjectFileMetadata"
           required:
             - created
             - updated
@@ -156,6 +156,34 @@ components:
         - path
         - language
         - content
+        - size
+        - hash
+        - createdAt
+
+    ProjectFileMetadata:
+      type: object
+      description: Project file metadata returned without source content.
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        path:
+          type: string
+        language:
+          type: string
+        size:
+          type: integer
+        hash:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - path
+        - language
         - size
         - hash
         - createdAt

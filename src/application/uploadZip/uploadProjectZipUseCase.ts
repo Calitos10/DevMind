@@ -8,12 +8,20 @@ import { ZipExtractor } from "../../application/ports/zipExtractor";
 import { ProjectNotFoundError } from "../../shared/errors/projectNotFoundError";
 import { NoValidProjectFilesFoundError } from "../../shared/errors/noValidProjectFilesFoundError";
 import { ProjectFileClassifier } from "../../domain/services/projectFileClassifier";
+import type { ProjectFile } from "../../domain/entities/projectFile";
 
 type UploadProjectZipUseCaseInput = {
   projectId: string;
   ownerId: string;
   zipSource: Buffer | string;
 };
+
+type ProjectFileMetadata = Omit<ProjectFile, "content">;
+
+function withoutContent(projectFile: ProjectFile): ProjectFileMetadata {
+  const { content: _content, ...metadata } = projectFile;
+  return metadata;
+}
 
 export class UploadProjectZipUseCase {
   constructor(
@@ -37,20 +45,6 @@ export class UploadProjectZipUseCase {
     }
     //--------------------------------------------------------
 
-    //Extrae los archivos del buffer usando el zipExtractor y valida si los archivos extraídos son válidos
-
-    const extractedFiles = await this.zipExtractor.extract(input.zipSource);
-
-    const validFiles = extractedFiles.filter((extractedFile) =>
-      this.fileClassifier.isRelevant(extractedFile),
-    );
-
-    if (validFiles.length === 0) {
-      throw new NoValidProjectFilesFoundError();
-    }
-
-    //--------------------------------------------------------
-
     //PARTE DE SINCRONIZACIÓN MEDIANTE PATH Y HASH PARA ACTUALIZAR LOS PROYECTOS SI SE VUELVEN A SUBIR ZIPS ACTUALIZADOS
 
     //Busca los archivos existentes del proyecto y los ordena por path
@@ -68,16 +62,27 @@ export class UploadProjectZipUseCase {
 
 
     //Inicializa los arrays
-    const createdFiles = [];
-    const updatedFiles = [];
-    const deletedFiles = [];
-    const unchangedFiles = [];
+    const createdFiles: ProjectFileMetadata[] = [];
+    const updatedFiles: ProjectFileMetadata[] = [];
+    const deletedFiles: ProjectFileMetadata[] = [];
+    const unchangedFiles: ProjectFileMetadata[] = [];
+    const incomingFilePaths = new Set<string>();
+    let validFileCount = 0;
    //--------------------------------------------------------
 
    //Este for es el que va recorriendo todos los archivos que se han quedado una vez pasada la validación de archivos
    //  y va realizando la sincronización mediante path y hash creando, eliminando o actualizando los archivos
    // y añadiendo cada archivo al array correspondiente.
-    for (const extractedFile of validFiles) {
+    for await (const extractedFile of this.zipExtractor.extract(
+      input.zipSource,
+    )) {
+      if (!this.fileClassifier.isRelevant(extractedFile)) {
+        continue;
+      }
+
+      validFileCount += 1;
+      incomingFilePaths.add(extractedFile.path);
+
       const hash = createHash("sha256")
         .update(extractedFile.content)
         .digest("hex");
@@ -87,7 +92,7 @@ export class UploadProjectZipUseCase {
       );
 
       if (existingProjectFile && existingProjectFile.hash === hash) {
-        unchangedFiles.push(existingProjectFile);
+        unchangedFiles.push(withoutContent(existingProjectFile));
         continue;
       }
 
@@ -104,7 +109,7 @@ export class UploadProjectZipUseCase {
           projectFile: updatedProjectFile,
         });
 
-        updatedFiles.push(updatedProjectFile);
+        updatedFiles.push(withoutContent(updatedProjectFile));
 
         continue;
       }
@@ -127,17 +132,17 @@ export class UploadProjectZipUseCase {
         projectFile: savedProjectFile,
       });
 
-      createdFiles.push(savedProjectFile);
+      createdFiles.push(withoutContent(savedProjectFile));
     }
     //--------------------------------------------------------Salimos del for
+
+    if (validFileCount === 0) {
+      throw new NoValidProjectFilesFoundError();
+    }
 
     //Este es el proceso en el cual, se sacan a un set todos los path de los nuevos archivos extraídos
     // y con el for se hace que por cada archivo que existía en el repositorio, si en el set no está el path de ese archivo
     // se elimina del repositorio.
-
-    const incomingFilePaths = new Set(
-      validFiles.map((extractedFile) => extractedFile.path),
-    );
 
     for (const existingProjectFile of existingProjectFiles) {
       if (!incomingFilePaths.has(existingProjectFile.path)) {
@@ -146,7 +151,7 @@ export class UploadProjectZipUseCase {
           input.projectId,
         );
 
-        deletedFiles.push(existingProjectFile);
+        deletedFiles.push(withoutContent(existingProjectFile));
       }
     }
     //--------------------------------------------------------
