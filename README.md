@@ -8,12 +8,13 @@ Trabajo Fin de Máster · API backend con RAG (Retrieval-Augmented Generation) s
 
 ## Enlaces del proyecto
 
-| Recurso                      | Enlace                     |
-| ---------------------------- | -------------------------- |
-| **Aplicación desplegada**    | https://devmind-frontend.vercel.app|
+| Recurso                      | Enlace                                                |
+| ---------------------------- | ----------------------------------------------------- |
+| **Aplicación desplegada**    | https://devmind-frontend.vercel.app                   |
+| **API desplegada**           | https://devmind-api-production-ae10.up.railway.app    |
 | **Presentación (slides)**    | 📊 [docs/DevMind_Slides.pdf](docs/DevMind_Slides.pdf) |
-| **Vídeo explicativo**        | 🔗 _Pendiente de publicar_ |
-| **Repositorio del frontend** | 🔗 _Pendiente de publicar_ |
+| **Vídeo explicativo**        | 🔗 _Pendiente de publicar_                            |
+| **Repositorio del frontend** | 🔗 _Pendiente de publicar_                            |
 
 ---
 
@@ -52,7 +53,7 @@ Un modelo de propósito general sabe programar, pero no ha visto nunca **tu** pr
 
 DevMind aplica **RAG (Retrieval-Augmented Generation)** sobre el código fuente:
 
-1. **Una vez**, al subir el proyecto: se extrae el ZIP, se filtran los archivos relevantes, se trocean en fragmentos (_chunks_) y se genera un **embedding** por fragmento, que se almacena en PostgreSQL con `pgvector`.
+1. **Al subir el proyecto:** se extrae el ZIP, se filtran los archivos relevantes y se trocean en fragmentos (_chunks_). Después, el usuario lanza explícitamente la indexación, que genera un **embedding** por fragmento y lo almacena en PostgreSQL con `pgvector`.
 2. **Cada vez** que se pregunta: se genera el embedding de la pregunta, se recuperan por similitud vectorial los fragmentos más cercanos, y se le pasan a un LLM como contexto para que redacte la respuesta.
 
 El resultado es una respuesta construida sobre el código real del proyecto, acompañada siempre de las **fuentes** (archivo + rango de líneas) que la sustentan.
@@ -62,7 +63,7 @@ El resultado es una respuesta construida sobre el código real del proyecto, aco
 - **Responde con el código delante, no de memoria.** El contexto se recupera del proyecto en cada pregunta.
 - **Cita siempre sus fuentes.** Cada respuesta devuelve la lista de archivos y líneas usadas, verificables por el usuario.
 - **Sabe decir "no lo sé".** Un umbral de distancia (`RAG_MAX_DISTANCE`) descarta los fragmentos irrelevantes. Si no queda ninguno, DevMind responde que no tiene información en lugar de inventar. Ver [§13](#13-decisiones-de-diseño).
-- **La indexación no bloquea al usuario.** Se ejecuta en segundo plano y su progreso es consultable.
+- **La subida y la indexación están separadas.** Subir el ZIP solo guarda archivos y chunks; la generación de embeddings se inicia explícitamente y su estado queda registrado.
 
 ### Alcance del proyecto
 
@@ -106,11 +107,11 @@ El resultado es una respuesta construida sobre el código real del proyecto, aco
 
 ### Utilidades
 
-| Tecnología  | Uso                                                   |
-| ----------- | ----------------------------------------------------- |
-| **multer**  | Recepción del ZIP (`multipart/form-data`, en disco temporal) |
-| **yauzl**   | Lectura incremental del contenido del ZIP                    |
-| **dotenv**  | Carga de variables de entorno                         |
+| Tecnología | Uso                                                          |
+| ---------- | ------------------------------------------------------------ |
+| **multer** | Recepción del ZIP (`multipart/form-data`, en disco temporal) |
+| **yauzl**  | Lectura incremental del contenido del ZIP                    |
+| **dotenv** | Carga de variables de entorno                                |
 
 ### Testing
 
@@ -145,11 +146,12 @@ npm install
 cp .env.example .env
 ```
 
-Edita el `.env`. Las dos variables **obligatorias** son:
+Edita el `.env`. Las tres variables **obligatorias** son:
 
 ```txt
 JWT_SECRET       — la aplicación no arranca sin ella
 GEMINI_API_KEY   — necesaria para generar embeddings y respuestas
+DATABASE_URL     — conexión a PostgreSQL; la aplicación no arranca sin ella
 ```
 
 Referencia completa de variables:
@@ -162,6 +164,7 @@ Referencia completa de variables:
 | `JWT_SECRET`                       | —                       | **Obligatoria.** Secreto de firma de los JWT                      |
 | `JWT_EXPIRES_IN`                   | `7d`                    | Caducidad de los tokens                                           |
 | `DATABASE_URL`                     | —                       | Cadena de conexión a PostgreSQL                                   |
+| `DATABASE_SSL`                     | `false`                 | Activa SSL si el proveedor de PostgreSQL lo exige                  |
 | `GEMINI_API_KEY`                   | —                       | **Obligatoria.** API key de Google Gemini                         |
 | `MAX_ZIP_SIZE_MB`                  | `200`                   | Tamaño máximo del ZIP subido                                      |
 | `MAX_ZIP_UNCOMPRESSED_SIZE_MB`     | `1000`                  | Tamaño máximo descomprimido (protección anti _zip bomb_)          |
@@ -174,7 +177,7 @@ Referencia completa de variables:
 | `INDEX_RATE_LIMIT_MAX`             | `5`                     | Indexaciones permitidas por usuario (ruta más cara del sistema)   |
 | `INDEX_RATE_LIMIT_WINDOW_MINUTES`  | `60`                    | Ventana del límite anterior                                       |
 | `INDEXING_DELAY_BETWEEN_CHUNKS_MS` | `1000`                  | Pausa entre chunks al indexar, para no saturar la cuota de Gemini |
-| `GUEST_TTL_HOURS`                  | `24`                    | Horas que vive un usuario invitado antes de ser purgado           |
+| `GUEST_TTL_HOURS`                  | `0.0166667`             | Horas que vive un invitado; configurar `24` en producción        |
 | `EMBEDDING_MAX_RETRIES`            | `3`                     | Reintentos ante fallos transitorios del proveedor (429/503)       |
 | `EMBEDDING_RETRY_BASE_MS`          | `1000`                  | Base del _backoff_ exponencial de los reintentos                  |
 | `RAG_MAX_DISTANCE`                 | `1.0`                   | Distancia L2 máxima para considerar un chunk relevante            |
@@ -260,13 +263,13 @@ PROJECT=$(curl -s -X POST http://localhost:3000/projects \
 # 3. Subir el ZIP del proyecto
 curl -X POST "http://localhost:3000/projects/$PROJECT/upload" \
   -H "Authorization: Bearer $TOKEN" \
-  -F "file=@./mi-proyecto.zip"
+  -F "file=@./docs/DevMind-prueba-media.zip"
 
 # 4. Lanzar la indexación
 curl -X POST "http://localhost:3000/projects/$PROJECT/index" \
   -H "Authorization: Bearer $TOKEN"
 
-# 5. Consultar el progreso (repetir hasta status: completed)
+# 5. Consultar el estado registrado (tras /index normalmente será completed)
 curl "http://localhost:3000/projects/$PROJECT/indexing-status" \
   -H "Authorization: Bearer $TOKEN"
 
@@ -281,7 +284,7 @@ curl -X POST "http://localhost:3000/projects/$PROJECT/ask" \
 
 ## 4. Despliegue
 
-> **Estado actual:** el proyecto está preparado para desplegarse, pero el despliegue público todavía no está publicado. La URL se añadirá en la [tabla de enlaces](#enlaces-del-proyecto).
+> **Estado actual:** el frontend está publicado en Vercel y la API, junto con PostgreSQL/pgvector, está desplegada en Railway. Las URLs públicas están en la [tabla de enlaces](#enlaces-del-proyecto).
 
 ### Preparación del build
 
@@ -297,15 +300,30 @@ npm start       # ejecuta node dist/src/main.js
 3. **Variables de entorno** configuradas en el proveedor (ver [§3](#paso-2--configurar-las-variables-de-entorno)). Como mínimo: `JWT_SECRET`, `GEMINI_API_KEY`, `DATABASE_URL` y `CORS_ORIGIN` apuntando al dominio real del frontend.
 4. **Migraciones aplicadas** contra la base de datos de producción: `npm run migrate`.
 
-### Pasos del despliegue
+### Despliegue actual
+
+- **Frontend:** Vercel (`https://devmind-frontend.vercel.app`).
+- **API:** Railway (`https://devmind-api-production-ae10.up.railway.app`).
+- **Base de datos:** PostgreSQL con pgvector dentro del proyecto de Railway.
+- **Publicación de la API:** despliegue manual desde Railway CLI.
+
+Comprobación pública del backend:
 
 ```bash
-# 1. Provisionar PostgreSQL con pgvector y obtener su DATABASE_URL
-# 2. Configurar las variables de entorno en el proveedor
-# 3. Ejecutar las migraciones contra la base de datos de producción
-npm run migrate
-# 4. Desplegar la aplicación (build + start)
-npm run build && npm start
+curl https://devmind-api-production-ae10.up.railway.app/health
+# {"status":"ok","service":"DevMind API","message":"API is running"}
+```
+
+### Pasos para actualizar la API en Railway
+
+```bash
+# 1. Configurar las variables en Railway y vincular el proyecto con la CLI
+# 2. Ejecutar las migraciones con las variables del servicio de Railway cuando cambie el esquema
+railway run npm run migrate
+# 3. Verificar el proyecto antes de publicar
+npm run typecheck && npm test && npm run build
+# 4. Desplegar la API
+railway up --service DevMind-API
 ```
 
 ### Consideraciones de producción
@@ -313,8 +331,8 @@ npm run build && npm start
 - **`CORS_ORIGIN`** debe apuntar al dominio del frontend desplegado, no a `localhost:5173`.
 - **`JWT_SECRET`** debe ser un secreto largo y aleatorio, distinto del usado en desarrollo.
 - **Limpieza de invitados:** `npm run purge-guests` no se ejecuta solo. En producción debe programarse externamente (por ejemplo, un cron diario). Ver [§14](#14-limitaciones-conocidas-y-trabajo-futuro).
-- **Indexación en el mismo proceso:** la indexación corre en segundo plano dentro del proceso de la API. Con varias instancias o con proyectos muy grandes, lo apropiado sería una cola de trabajos externa. Ver [§14](#14-limitaciones-conocidas-y-trabajo-futuro).
-- **Memoria:** los ZIP se procesan en memoria (`multer.memoryStorage`), así que la instancia debe tener RAM suficiente para `MAX_ZIP_SIZE_MB`.
+- **Indexación en el mismo proceso:** la petición permanece abierta mientras la API genera los embeddings. Con proyectos muy grandes, lo apropiado sería una cola de trabajos externa. Ver [§14](#14-limitaciones-conocidas-y-trabajo-futuro).
+- **Subida de ZIP:** Multer escribe el archivo comprimido en disco temporal y `yauzl` recorre sus entradas con `lazyEntries`. Las rutas ignoradas no se descomprimen y los archivos relevantes se procesan uno a uno para mantener acotado el heap de Node.
 
 ---
 
@@ -362,8 +380,7 @@ DevMind/
 │   │   │   ├── postgresPool.ts
 │   │   │   └── migrations/         # 001..009, SQL versionado
 │   │   ├── repositoryAdapter/
-│   │   │   ├── postgres/           # Implementaciones reales
-│   │   │   └── inMemory/           # Implementaciones para tests
+│   │   │   └── postgres/           # Implementaciones reales
 │   │   ├── genkit/                 # ai.ts, generadores de embeddings y respuestas
 │   │   │   └── testing/            # Dobles de test de los generadores
 │   │   ├── authAdapter/            # jwtTokenService, bcryptPasswordHasher, cryptoIdGenerator
@@ -422,7 +439,7 @@ DevMind soporta dos modos de uso deliberadamente distintos:
 | Cómo se entra                 | Automático, sin formulario (`POST /auth/guest`)                              | Registro y login con email y contraseña |
 | Subir ZIP, indexar, preguntar | ✅                                                                           | ✅                                      |
 | Historial de conversaciones   | ❌ No se guarda                                                              | ✅ Persistente                          |
-| Persistencia de los proyectos | ❌ Caducan a las `GUEST_TTL_HOURS` (24 h por defecto) y se borran en cascada | ✅ Permanente                           |
+| Persistencia de los proyectos | ❌ Caducan según el `GUEST_TTL_HOURS` configurado en Railway (recomendado: `24`) | ✅ Permanente                           |
 | Propósito                     | Probar la herramienta sin dar datos                                          | Uso continuado                          |
 
 El invitado recibe un JWT normal, con el hash de un valor aleatorio inservible como contraseña, de forma que nadie pueda autenticarse como él por la vía habitual. El script `purge-guests` elimina a los invitados caducados; las cascadas de la base de datos arrastran sus proyectos, archivos, chunks, embeddings, jobs e historial.
@@ -442,20 +459,23 @@ Crear, listar, consultar y borrar proyectos. Cada proyecto pertenece a un usuari
 | Mismo path, mismo hash                   | `unchanged` (no se toca) |
 | Existía en BD pero ya no viene en el ZIP | `deleted`                |
 
+La respuesta devuelve el resumen y los metadatos de esos cuatro grupos (`id`, ruta, lenguaje, tamaño y hash), pero no duplica el contenido completo de los archivos.
+
 Durante la extracción se descartan:
 
 - **Carpetas ignoradas:** `node_modules`, `.git`, `dist`, `build`, `coverage`, `.next`, `docs`
 - **Archivos binarios:** imágenes, vídeos, audio, fuentes, PDF, ZIP anidados, ejecutables, bases de datos...
 - **Archivos con bytes nulos** (señal de contenido binario incompatible con las columnas de texto de PostgreSQL)
-- **Markdown** (`.md`, `.mdx`), para que las respuestas se apoyen en código fuente real y no en documentación
+
+Los archivos Markdown no se descartan por extensión: `.md` se clasifica como `markdown` y `.mdx` como lenguaje desconocido. Sí se ignoran cuando están dentro de una carpeta excluida, como `docs`.
 
 ### 6.4 Troceado en chunks
 
 Cada archivo creado o actualizado se trocea automáticamente en `CodeChunk` mediante `LineCodeChunker`: ventanas de **80 líneas con 10 líneas de solapamiento**. El solapamiento evita que una función quede partida justo en el límite entre dos chunks y pierda su contexto.
 
-### 6.5 Indexación asíncrona con progreso consultable
+### 6.5 Indexación explícita con estado persistido
 
-`POST /projects/:id/index` lanza la generación de embeddings **en segundo plano** y responde de inmediato. `GET /projects/:id/indexing-status` permite hacer _polling_ del progreso:
+`POST /projects/:id/index` genera los embeddings dentro de la propia petición HTTP y responde cuando termina. El estado se persiste durante el proceso; `GET /projects/:id/indexing-status` permite consultar el último progreso registrado:
 
 ```json
 {
@@ -503,34 +523,20 @@ Las llamadas a Gemini se reintentan con _backoff_ exponencial ante errores trans
 
 ## 7. Usuario de prueba
 
-La API **no incluye usuarios precargados**: la base de datos arranca vacía tras las migraciones. Hay dos formas de probarla.
-
-### Opción A (recomendada) — Modo invitado, sin registro
+### Opción A — Modo invitado, sin registro
 
 Es el flujo por defecto del producto: no hace falta ninguna credencial.
 
-```bash
-curl -X POST http://localhost:3000/auth/guest
-```
-
 Devuelve un `accessToken` listo para usar en el resto de endpoints. El frontend lo hace automáticamente al cargar, así que **basta con abrir la aplicación**.
 
-### Opción B — Crear un usuario registrado
+### Opción B — Usuario de prueba guardado
 
-```bash
-curl -X POST http://localhost:3000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Usuario Demo","email":"demo@devmind.com","password":"demo1234"}'
-```
-
-Y a partir de ahí, iniciar sesión con esas credenciales:
+Iniciar sesión con estas credenciales:
 
 ```txt
-Email:      demo@devmind.com
-Contraseña: demo1234
+Email:      usuariodeprueba@gmail.com
+Contraseña: Prueba123
 ```
-
-> **Nota para la corrección:** estas credenciales son las que hay que crear con el comando de arriba (o desde `/register` en el frontend), no unas preexistentes. Requisitos de validación: nombre ≥ 2 caracteres, email válido, contraseña ≥ 6 caracteres.
 
 ---
 
@@ -570,8 +576,8 @@ Authorization: Bearer <accessToken>
 
 | Método | Ruta                            | Body                                | Descripción                                                          |
 | ------ | ------------------------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| `POST` | `/projects/:id/upload`          | `multipart/form-data`, campo `file` | Sube y sincroniza el ZIP · `200` / `400` / `401` / `404`             |
-| `POST` | `/projects/:id/index`           | —                                   | Lanza la indexación en segundo plano · `202` / `401` / `404` / `409` |
+| `POST` | `/projects/:id/upload`          | `multipart/form-data`, campo `file` | Sube y sincroniza el ZIP · `201` / `400` / `401` / `404`             |
+| `POST` | `/projects/:id/index`           | —                                   | Genera los embeddings · `200` / `401` / `404` / `409`               |
 | `GET`  | `/projects/:id/indexing-status` | —                                   | Progreso de la indexación · `200` / `401` / `404`                    |
 
 ### Preguntas
@@ -591,11 +597,13 @@ Authorization: Bearer <accessToken>
 
 ### Formato de errores
 
-Todas las respuestas de error comparten forma:
+Todas las respuestas de error incluyen al menos un mensaje:
 
 ```json
-{ "message": "Descripción del error", "errors": {} }
+{ "message": "Descripción del error" }
 ```
+
+Los errores de validación de Zod añaden además un campo `errors` con el detalle estructurado.
 
 | Código | Significado                                                             |
 | ------ | ----------------------------------------------------------------------- |
@@ -617,7 +625,7 @@ ZIP subido
    ↓
 YauzlZipExtractor recorre los archivos de forma incremental
    ↓
-ProjectFileClassifier filtra (carpetas ignoradas, binarios, markdown, bytes nulos)
+ProjectFileClassifier filtra (carpetas ignoradas, binarios y bytes nulos)
    ↓
 Sincronización por path + hash → created / updated / unchanged / deleted
    ↓
@@ -627,7 +635,7 @@ LineCodeChunker trocea (80 líneas, 10 de solapamiento)
    ↓
 CodeChunk guardado en PostgreSQL
    ↓
-[segundo plano] gemini-embedding-001 genera un vector de 768 dimensiones por chunk
+[petición explícita a /index] gemini-embedding-001 genera un vector de 768 dimensiones por chunk
    ↓
 code_chunk_embeddings (columna vector(768) de pgvector)
 ```
@@ -724,7 +732,7 @@ Los límites reflejan el coste real de cada ruta:
 | ---------------------- | ----------------------- | ---------------------------------------------- |
 | `/auth/*`              | 10 / 15 min             | Frenar fuerza bruta sobre credenciales         |
 | `/projects/:id/ask`    | 20 / 15 min por usuario | Cada pregunta = 1 embedding + 1 llamada al LLM |
-| `/projects/:id/upload` | 10 / 60 min por usuario | Consume CPU y memoria, dispara indexación      |
+| `/projects/:id/upload` | 10 / 60 min por usuario | Consume CPU y memoria al procesar el ZIP         |
 | `/projects/:id/index`  | 5 / 60 min por usuario  | Ruta más cara: una llamada al modelo por chunk |
 
 ### Protección de la subida
@@ -744,7 +752,7 @@ Los límites reflejan el coste real de cada ruta:
 
 ## 12. Tests
 
-El proyecto tiene **176 casos de test repartidos en 44 archivos**, ejecutados con Vitest y Supertest.
+El proyecto tiene **177 casos de test repartidos en 44 archivos**, ejecutados con Vitest y Supertest.
 
 ```bash
 npm test              # Ejecuta toda la batería
@@ -757,7 +765,7 @@ Los tests de integración usan **su propia base de datos** (`devmind_test_db`, d
 
 | Nivel           | Qué cubre                                                          | Cómo                                                                                                                                              |
 | --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unitario**    | Casos de uso y adaptadores                                         | Con dobles en memoria (`inMemoryUserRepository`, `testEmbeddingGenerator`, `testAnswerGenerator`). Sin base de datos ni llamadas a APIs externas. |
+| **Unitario**    | Casos de uso y adaptadores                                         | Con fakes de repositorios en `tests/fakes` y generadores de IA de test. Sin base de datos ni llamadas a APIs externas.                            |
 | **Integración** | Rutas, middlewares, controladores y casos de uso trabajando juntos | Peticiones HTTP reales con Supertest contra la app de Express y PostgreSQL de test.                                                               |
 
 Áreas cubiertas: `auth`, `projects`, `projectFile`, `uploadZip`, `projectQuestions`, `rateLimit`.
@@ -792,7 +800,7 @@ Si los tres pasan, la fase se considera estable.
 
 ### Por qué arquitectura hexagonal
 
-Un proyecto con IA tiene piezas que envejecen a ritmos muy distintos: las reglas de negocio son estables, pero el modelo de embeddings, el LLM o la base de datos vectorial cambian constantemente. Aislar el núcleo tras puertos permite sustituir Gemini por otro proveedor, o PostgreSQL por otra base de datos, escribiendo un adaptador nuevo sin tocar los casos de uso. El beneficio inmediato y verificable es el testing: los 176 tests corren sin depender del proveedor de IA.
+Un proyecto con IA tiene piezas que envejecen a ritmos muy distintos: las reglas de negocio son estables, pero el modelo de embeddings, el LLM o la base de datos vectorial cambian constantemente. Aislar el núcleo tras puertos permite sustituir Gemini por otro proveedor, o PostgreSQL por otra base de datos, escribiendo un adaptador nuevo sin tocar los casos de uso. El beneficio inmediato y verificable es el testing: los 177 tests corren sin depender del proveedor de IA.
 
 ### Por qué pgvector y no una base de datos vectorial dedicada
 
@@ -808,7 +816,7 @@ A la escala de este proyecto, el coste operativo de mantener un Pinecone o un Qd
 
 En las primeras versiones, la generación de embeddings ocurría dentro del flujo de subida. En un proyecto con muchos archivos eso significaba cientos de llamadas seguidas al modelo, con el resultado de que la petición HTTP tardaba minutos, el usuario se quedaba mirando una pantalla congelada y aparecían errores de cuota.
 
-La solución fue partir el flujo: la subida guarda archivos y chunks y responde de inmediato; la indexación se lanza aparte, corre en segundo plano y su progreso es consultable. El scheduler (`AsyncProjectIndexingScheduler`) devuelve `void` a propósito y captura sus errores, para que un fallo de indexación no rompa la petición HTTP original.
+La solución fue partir el flujo: la subida guarda archivos y chunks y responde sin llamar al proveedor de IA; la indexación se lanza aparte mediante `POST /projects/:id/index`. La petición de indexación permanece abierta hasta terminar y el trabajo registra su estado (`processing`, `completed` o `failed`) en PostgreSQL.
 
 ### Por qué existe un umbral de distancia (`RAG_MAX_DISTANCE`)
 
@@ -826,9 +834,9 @@ El umbral descarta los chunks cuya distancia L2 supera `RAG_MAX_DISTANCE`. Si no
 
 Trocear por unidades sintácticas (funciones, clases) daría chunks semánticamente más limpios, pero exige un parser por lenguaje. Es una mejora identificada, no un descuido ([§14](#14-limitaciones-conocidas-y-trabajo-futuro)).
 
-### Por qué se ignoran los archivos Markdown
+### Tratamiento de los archivos Markdown
 
-Se descartan `.md` y `.mdx` en la subida deliberadamente. El objetivo de DevMind es responder a partir del **código fuente real**, que es la única fuente que no miente sobre lo que el sistema hace. La documentación puede estar desactualizada; si entrase en el índice, las respuestas podrían apoyarse en ella en lugar de en el código, que es justo el problema que el proyecto intenta resolver.
+Los archivos Markdown no se excluyen globalmente. `.md` se reconoce como `markdown` y puede formar parte del proyecto, mientras que las entradas situadas dentro de la carpeta `docs` se ignoran junto con el resto de esa carpeta. Esta regla permite conservar archivos como un `README.md` en la raíz sin indexar directorios completos de documentación.
 
 ### Por qué existe el modo invitado
 
@@ -846,13 +854,13 @@ Reconocidas de forma explícita, con su motivo:
 
 | Limitación                                                                                                                  | Estado                                                                                          |
 | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **La purga de invitados no es automática.** `purge-guests` existe y funciona, pero debe lanzarse a mano o por cron externo. | Un scheduler interno queda como mejora (ver la Fase 13 en `docs/Memoria_Tecnica.md`).            |
+| **La purga de invitados no es automática.** `purge-guests` existe y funciona, pero debe lanzarse a mano o por cron externo. | Un scheduler interno queda como mejora (ver la Fase 13 en `docs/Memoria_Tecnica.md`).           |
 | **El proyecto de un invitado no se transfiere al registrarse.** Al crear cuenta, lo subido como invitado no migra.          | Decisión consciente: la migración añade complejidad que no aportaba al alcance del TFM.         |
-| **La indexación vive en el proceso de la API.** Corre en segundo plano, pero dentro del mismo proceso.                      | Con varias instancias o proyectos muy grandes, correspondería una cola externa (BullMQ, Redis). |
+| **La indexación vive en la petición HTTP de la API.** Los proyectos grandes pueden provocar timeouts.                  | Correspondería una cola externa (BullMQ, Redis) para ejecutar trabajos en segundo plano.       |
 | **`RAG_MAX_DISTANCE` no está calibrado empíricamente.** El valor por defecto es un punto de partida.                        | Requiere un conjunto de preguntas de evaluación con respuestas esperadas.                       |
 | **El troceado es por líneas, no por unidades sintácticas.**                                                                 | Trocear por funciones/clases mejoraría la precisión; exige un parser por lenguaje.              |
 | **No hay métricas de calidad de las respuestas.** No se mide precisión ni relevancia de forma sistemática.                  | Es la mejora de mayor valor: convertiría el sistema en algo evaluable objetivamente.            |
-| **Los ZIP se procesan en memoria.** Limita el tamaño manejable a la RAM de la instancia.                                    | Streaming a disco para proyectos grandes.                                                       |
+| **Cada archivo relevante del ZIP debe caber individualmente en memoria.** El ZIP y su catálogo ya se leen de forma incremental. | Para archivos individuales extremos sería necesario transmitir también el contenido hacia la persistencia. |
 
 ### Próximos pasos previstos
 
@@ -868,12 +876,13 @@ Reconocidas de forma explícita, con su motivo:
 
 En la carpeta `docs/` hay material técnico ampliado:
 
-| Documento                      | Contenido                                             |
-| ------------------------------ | ----------------------------------------------------- |
-| `docs/Memoria_Tecnica.md`      | **Memoria técnica**: recorrido paso a paso del desarrollo, desde la idea inicial hasta la construcción final del proyecto (requisitos, casos de uso, decisiones de diseño y todas las fases) |
-| `docs/Defensa_del_Proyecto.md` | Recorrido técnico detallado de cada flujo del sistema |
-| `docs/openapi.yaml`            | Contrato OpenAPI de la API (endpoints y esquemas)     |
-| `docs/Frontend_generado_con_IA.md` | Cómo se generó el frontend con IA y el _prompt_ exacto utilizado |
+| Documento                          | Contenido                                                                                                                                                                                    |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/Memoria_Tecnica.md`          | **Memoria técnica**: recorrido paso a paso del desarrollo, desde la idea inicial hasta la construcción final del proyecto (requisitos, casos de uso, decisiones de diseño y todas las fases) |
+| `docs/Defensa_del_Proyecto.md`     | Recorrido técnico detallado de cada flujo del sistema                                                                                                                                        |
+| `docs/openapi.yaml`                | Contrato OpenAPI de la API (endpoints y esquemas)                                                                                                                                            |
+| `docs/Frontend_generado_con_IA.md` | Cómo se generó el frontend con IA y el _prompt_ exacto utilizado                                                                                                                             |
+| `docs/DevMind-prueba-media.zip`    | Archivo zip para probar la API                                                                                                                                                               |
 
 ---
 
