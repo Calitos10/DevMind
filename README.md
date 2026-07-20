@@ -13,8 +13,8 @@ Trabajo Fin de Máster · API backend con RAG (Retrieval-Augmented Generation) s
 | **Aplicación desplegada**    | https://devmind-frontend.vercel.app                   |
 | **API desplegada**           | https://devmind-api-production-ae10.up.railway.app    |
 | **Presentación (slides)**    | 📊 [docs/DevMind_Slides.pdf](docs/DevMind_Slides.pdf) |
-| **Vídeo explicativo**        | 🔗 _Pendiente de publicar_                            |
-| **Repositorio del frontend** | 🔗 _Pendiente de publicar_                            |
+| **Vídeo explicativo**        | 🎬 [Ver en YouTube](https://www.youtube.com/watch?v=X9B_0pLYTfw) |
+| **Repositorio del frontend** | 🔗 https://github.com/Calitos10/Devmind-Frontend                         |
 
 ---
 
