@@ -1,0 +1,54 @@
+{
+  "name": "devmind",
+  "version": "1.0.0",
+  "description": "API backend con IA para el análisis y la consulta de proyectos software mediante lenguaje natural (RAG).",
+  "license": "ISC",
+  "author": "Carlos Morillas López",
+  "type": "commonjs",
+  "main": "dist/src/main.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc",
+    "start": "node dist/src/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest run",
+    "test:watch": "DATABASE_URL=postgresql://devmind:devmind_password@localhost:5432/devmind_test_db vitest",
+    "migrate": "tsx scripts/run-migrations.ts",
+    "purge-guests": "tsx scripts/purge-guests.ts"
+  },
+  "dependencies": {
+    "@genkit-ai/anthropic": "^0.3.0",
+    "@genkit-ai/google-genai": "^1.39.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "genkit": "^1.39.0",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "pg": "^8.22.0",
+    "yauzl": "^3.4.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^26.0.1",
+    "@types/pg": "^8.20.0",
+    "@types/supertest": "^7.2.0",
+    "@types/yauzl": "^3.4.0",
+    "adm-zip": "^0.6.0",
+    "supertest": "^7.2.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
