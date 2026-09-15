@@ -30,7 +30,7 @@ Documentación: [presentación](docs/DevMind_Slides.pdf) · [contrato OpenAPI](d
 10. [Modelo de datos](#10-modelo-de-datos)
 11. [Seguridad](#11-seguridad)
 12. [Tests](#12-tests)
-13. [Decisiones de diseño](#13-decisiones-de-diseño)
+13. [Engineering decisions](#13-engineering-decisions)
 14. [Limitaciones conocidas y trabajo futuro](#14-limitaciones-conocidas-y-trabajo-futuro)
 
 ---
@@ -616,6 +616,46 @@ Los errores de validación de Zod añaden además un campo `errors` con el detal
 
 ## 9. Cómo funciona el RAG por dentro
 
+### Arquitectura y flujo completo
+
+```mermaid
+flowchart LR
+    U[Usuario] -->|HTTP + JWT| API[Express API<br/>Transport]
+    API --> UC[Casos de uso<br/>Application]
+
+    subgraph IDX[1. Indexación]
+        ZIP[Proyecto ZIP] --> EXT[Extraer y filtrar archivos]
+        EXT --> CHUNK[Dividir código en chunks]
+        CHUNK --> EMB1[Generar embeddings]
+    end
+
+    subgraph ASK[2. Consulta]
+        Q[Pregunta] --> EMB2[Generar embedding]
+        EMB2 --> SEARCH[Búsqueda semántica]
+        SEARCH --> CONTEXT[Contexto relevante]
+        CONTEXT --> LLM[Generar respuesta]
+        LLM --> OUT[Respuesta + fuentes]
+    end
+
+    UC --> ZIP
+    UC --> Q
+    EMB1 -->|Gemini| VECTOR[(PostgreSQL<br/>+ pgvector)]
+    SEARCH <-->|5 chunks más cercanos| VECTOR
+    CONTEXT -->|Código recuperado| LLM
+    OUT --> API
+
+    ADAPTERS[Adaptadores de infraestructura<br/>PostgreSQL · Gemini · ZIP · JWT] -. implementan puertos .-> UC
+
+    classDef core fill:#ede9fe,stroke:#7c3aed,color:#2e1065
+    classDef storage fill:#dbeafe,stroke:#2563eb,color:#172554
+    classDef output fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class UC core
+    class VECTOR storage
+    class OUT output
+```
+
+La API actúa como entrada, los **casos de uso** coordinan el flujo sin depender de tecnologías concretas y los **adaptadores de infraestructura** conectan PostgreSQL, pgvector, Gemini, la extracción del ZIP y JWT. La indexación prepara el conocimiento una vez; cada pregunta recupera únicamente el contexto más relevante antes de invocar al modelo.
+
 ### Fase 1 — Indexación (una vez por proyecto)
 
 ```txt
@@ -794,7 +834,18 @@ Si los tres pasan, la fase se considera estable.
 
 ---
 
-## 13. Decisiones de diseño
+## 13. Engineering decisions
+
+Estas son las decisiones que más condicionan la arquitectura y el comportamiento de DevMind. Cada una resuelve un problema concreto y acepta un coste explícito.
+
+| Decisión | Por qué | Trade-off asumido |
+| -------- | ------- | ----------------- |
+| **Arquitectura hexagonal** | Mantiene los casos de uso independientes de Express, PostgreSQL y Gemini; permite probarlos con dobles y sustituir adaptadores. | Más interfaces, composición y estructura que en una API organizada solo por rutas. |
+| **PostgreSQL + pgvector** | Conserva datos relacionales y embeddings en una sola base de datos, con integridad referencial, cascadas y consultas vectoriales filtradas por proyecto. | Menos especialización y escalabilidad vectorial que una base dedicada. |
+| **Subida e indexación separadas** | La subida persiste archivos y chunks sin esperar cientos de llamadas al proveedor de embeddings; la indexación se inicia explícitamente y registra su estado. | El cliente debe coordinar dos operaciones y consultar el estado de indexación. |
+| **Umbral de relevancia antes del LLM** | `RAG_MAX_DISTANCE` descarta resultados vectoriales irrelevantes; si no queda contexto válido, DevMind admite que no puede responder. | El umbral necesita calibración y puede excluir fragmentos útiles si es demasiado estricto. |
+| **Chunks por líneas con solapamiento 80/10** | Funciona con cualquier lenguaje, conserva rangos de líneas verificables y reduce los cortes de contexto entre chunks. | Comprende peor la estructura semántica que un troceado basado en AST. |
+| **Aislamiento de recursos con `404`** | Buscar siempre por recurso y propietario evita filtrar la existencia de proyectos ajenos mediante respuestas `403`. | El cliente no puede distinguir entre un recurso inexistente y uno no autorizado. |
 
 ### Por qué arquitectura hexagonal
 
