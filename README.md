@@ -155,6 +155,7 @@ npm run build
 
 ## Limitaciones principales
 
+- No hay un pipeline de CI con GitHub Actions que ejecute automáticamente `typecheck`, tests y build, ni badges que muestren su estado en el README.
 - La indexación se ejecuta dentro de la petición HTTP; proyectos grandes pueden provocar timeouts.
 - El umbral de relevancia todavía no está calibrado con un conjunto de evaluación.
 - El chunking se basa en líneas, no en unidades sintácticas.
