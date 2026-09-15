@@ -141,6 +141,7 @@ El razonamiento completo está documentado en [Engineering decisions](docs/TECHN
 ## Calidad y seguridad
 
 - Tests unitarios con adaptadores en memoria y tests HTTP de integración con PostgreSQL.
+- Integración continua con GitHub Actions en cada push y pull request a `main`, ejecutando typecheck, tests y build.
 - Validación de entrada con Zod y errores de dominio tipados.
 - Hash de contraseñas con bcrypt y autenticación JWT.
 - Límites específicos para autenticación, subida, indexación y preguntas.
