@@ -10,6 +10,24 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+
+        env:
+          POSTGRES_USER: devmind
+          POSTGRES_PASSWORD: devmind_password
+          POSTGRES_DB: devmind_test_db
+
+        ports:
+          - 5432:5432
+
+        options: >-
+          --health-cmd="pg_isready -U devmind -d devmind_test_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - name: Descargar repositorio
         uses: actions/checkout@v4
