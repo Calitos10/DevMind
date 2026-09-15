@@ -4,13 +4,13 @@
 
 > «¿Dónde se gestiona la autenticación?» → DevMind recupera los fragmentos relevantes, responde con contexto y cita sus fuentes.
 
-**[Probar la aplicación](https://devmind-frontend.vercel.app)** · [Ver vídeo](https://www.youtube.com/watch?v=X9B_0pLYTfw) · [Explorar la API](https://devmind-api-production-ae10.up.railway.app)
+**[Probar la aplicación](https://devmind-frontend.vercel.app)** · **[Ver presentación PDF](docs/DevMind_Slides.pdf)**
 
 ```text
 1. Sube el ZIP  →  2. Indexa el código  →  3. Pregunta y verifica las fuentes
 ```
 
-DevMind es la API backend de un Trabajo Fin de Máster construida con **TypeScript, arquitectura hexagonal y RAG** sobre código fuente.
+DevMind es la API backend construida con **TypeScript, arquitectura hexagonal y RAG** sobre código fuente.
 
 ## Qué aporta
 
