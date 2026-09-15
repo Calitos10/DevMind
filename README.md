@@ -1,20 +1,18 @@
-# DevMind
+# DevMind — entiende cualquier codebase preguntándole
 
-> Sube tu proyecto de código en un ZIP y hazle preguntas en lenguaje natural. DevMind responde usando tu código real como contexto y cita los archivos y líneas exactas de los que ha sacado cada respuesta.
+**Sube un proyecto en ZIP, pregunta en lenguaje natural y recibe respuestas basadas en su código, con el archivo y las líneas exactas que las justifican.**
 
-Trabajo Fin de Máster · API backend con RAG (Retrieval-Augmented Generation) sobre código fuente.
+> «¿Dónde se gestiona la autenticación?» → DevMind busca los fragmentos relevantes, responde con contexto y enlaza sus fuentes.
 
----
+**[Probar la aplicación](https://devmind-frontend.vercel.app)** · [Ver vídeo](https://www.youtube.com/watch?v=X9B_0pLYTfw) · [Explorar la API](https://devmind-api-production-ae10.up.railway.app)
 
-## Enlaces del proyecto
+```text
+1. Sube el ZIP  →  2. Indexa el código  →  3. Pregunta y verifica las fuentes
+```
 
-| Recurso                      | Enlace                                                |
-| ---------------------------- | ----------------------------------------------------- |
-| **Aplicación desplegada**    | https://devmind-frontend.vercel.app                   |
-| **API desplegada**           | https://devmind-api-production-ae10.up.railway.app    |
-| **Presentación (slides)**    | 📊 [docs/DevMind_Slides.pdf](docs/DevMind_Slides.pdf) |
-| **Vídeo explicativo**        | 🎬 [Ver en YouTube](https://www.youtube.com/watch?v=X9B_0pLYTfw) |
-| **Repositorio del frontend** | 🔗 https://github.com/Calitos10/Devmind-Frontend                         |
+API backend de un Trabajo Fin de Máster construida con **TypeScript, arquitectura hexagonal y RAG** sobre código fuente. Utiliza Gemini para generar embeddings y respuestas, y PostgreSQL con pgvector para recuperar el contexto relevante.
+
+Documentación: [presentación](docs/DevMind_Slides.pdf) · [contrato OpenAPI](docs/openapi.yaml) · [repositorio del frontend](https://github.com/Calitos10/Devmind-Frontend)
 
 ---
 
